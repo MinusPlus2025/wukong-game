@@ -861,3 +861,7 @@ body.eva-alert .boss-name{color:#ff5a3c!important;text-shadow:0 0 18px rgba(255,
 .bi-name{font-family:'Ma Shan Zheng',serif;font-size:clamp(56px,8vw,104px);color:#fff3cf;margin:0;text-shadow:0 0 40px rgba(241,158,31,.28)}
 .bi-title{font-family:'PingFang SC',sans-serif;font-size:15px;letter-spacing:.34em;color:#d6c6ad;margin:10px 0 0}
 .bi-bottom{position:absolute;bottom:9vh;font-family:'Menlo',monospace;font-size:8px;letter-spacing:.26em;color:rgba(111,227,214,.65)}
+
+.spirit-hud{position:fixed;top:118px;left:24px;z-index:15;display:flex;align-items:baseline;gap:5px;padding:5px 10px;background:rgba(4,8,12,.7);border:1px solid rgba(111,227,214,.24);font-family:'Menlo',monospace;font-size:9px;letter-spacing:.12em;color:#9fb6b0;pointer-events:none}
+.spirit-hud b{font-size:14px;color:#6fe3d6}
+.spirit-hud em{font-style:normal;color:#5d7772;font-size:8px}

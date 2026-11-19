@@ -118,6 +118,14 @@ let fpsFrames = 0;
 let lowHpPlayed = false;
 let comboCount = 0;
 let comboTimer = 0;
+let spiritsFound = 0;
+let chapterSpirits = 0;
+let chapterDamage = 0;
+let chapterStartedAt = 0;
+let chapterRank = 'B';
+let ngPlus = 0;
+const collectedSpirits = new Set<string>();
+let spiritOrbs: Array<{ group: THREE.Group; key: string; lore: string }> = [];
 
 const keys = new Set<string>();
 
@@ -174,6 +182,7 @@ const lowHp = document.getElementById('low-hp')!;
 const hitFlash = document.getElementById('hit-flash')!;
 const comboHud = document.getElementById('combo-hud')!;
 const comboCountEl = document.getElementById('combo-count')!;
+const spiritCountEl = document.getElementById('spirit-count')!;
 const rootsCountEl = document.getElementById('roots-count')!;
 const karmaFillEl = document.getElementById('karma-fill')!;
 const karmaLabelEl = document.getElementById('karma-label')!;
@@ -191,6 +200,11 @@ async function startChapter(idx: number): Promise<void> {
   const cfg = ACTIVE_CHAPTERS[currentChapter];
   chapterClearedTriggered = false;
   chapterReady = false;
+  chapterSpirits = 0;
+  chapterDamage = 0;
+  chapterStartedAt = performance.now();
+  chapterRank = 'B';
+  spawnSpiritOrbs(currentChapter);
   lockTarget = null;
   lockSprite.visible = false;
   document.body.classList.remove('eva-alert');
@@ -218,7 +232,7 @@ async function startChapter(idx: number): Promise<void> {
     b.classList.toggle('active', i === currentChapter);
   });
   hudChapCode.textContent = cfg.code;
-  hudObjective.textContent = cfg.objectiveHint;
+  hudObjective.textContent = cfg.objectiveHint + (ngPlus > 0 ? ` · NG+${ngPlus}` : '');
 
   // Show Chapter Calligraphic Scroll
   bannerCode.textContent = cfg.code;
@@ -231,6 +245,12 @@ async function startChapter(idx: number): Promise<void> {
 
   await world.loadChapter(cfg, gltfLoader);
   await enemies.spawnChapterEnemies(cfg.enemies, gltfLoader, (x, z) => world.getTerrainHeight(x, z));
+  if (ngPlus > 0) {
+    for (const e of enemies.enemies) {
+      e.maxHp = Math.round(e.maxHp * (1 + ngPlus * 0.35));
+      e.hp = e.maxHp;
+    }
+  }
   // Give the player one beat to land before clear can trigger.
   window.setTimeout(() => { chapterReady = true; chapterLoading.classList.add('hidden'); }, 900);
   const bossSpec = cfg.enemies.find((e) => e.isBoss);
@@ -435,6 +455,10 @@ document.getElementById('btn-start-game')!.addEventListener('click', async () =>
   roots = 0;
   karma = 0;
   damageBonus = 0;
+  spiritsFound = 0;
+  collectedSpirits.clear();
+  ngPlus = 0;
+  updateSpiritHud();
   updateRootHud();
   // Start gameplay immediately; audio (reverb + voice preload) initializes in parallel.
   void audio.init().then(() => speak('start'));
@@ -550,6 +574,79 @@ function showStory(text: string, ms = 4200): void {
   storyTimer = window.setTimeout(() => storySub.classList.add('hidden'), ms);
 }
 
+const SPIRIT_LORE = [
+  ['灵蕴 · 怒', '石缝里有一道旧刻痕，像是有人用指甲写的“别回头”。'],
+  ['灵蕴 · 嗔', '焦土下埋着半只铜铃，摇不响，却还有余温。'],
+  ['灵蕴 · 痴', '云海尽头有人在敲钟。你数到第九声，钟声停了。'],
+  ['灵蕴 · 疑', '桃树根下压着一片金甲，尺寸和你身上的一模一样。'],
+  ['灵蕴 · 惧', '这尊石狮的眼睛，刚才是不是转了一下？'],
+  ['灵蕴 · 空', '水帘后面没有洞，只有一面照不出你的镜子。'],
+  ['灵蕴 · 舍', '南天门的门槛上，刻着“到此一游”，字迹是你的。'],
+  ['灵蕴 · 得', '香炉里没有香，只有一根烧了一半的猴毛。'],
+  ['灵蕴 · 忘', '你听见有人在很远的地方喊“大圣”，却想不起是谁。'],
+];
+
+function updateSpiritHud(): void {
+  spiritCountEl.textContent = String(spiritsFound);
+}
+
+function spawnSpiritOrbs(chapter: number): void {
+  for (const o of spiritOrbs) scene.remove(o.group);
+  spiritOrbs = [];
+  const positions: Record<number, Array<[number, number]>> = {
+    0: [[-17, -2], [17, -6], [4, -27]],
+    1: [[-18, 6], [18, 8], [0, -26]],
+    2: [[-14, -4], [14, 2], [0, -22]],
+  };
+  const list = positions[chapter] ?? positions[0];
+  list.forEach(([x, z], i) => {
+    const key = `${chapter}-${i}`;
+    if (collectedSpirits.has(key)) return;
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0x9fffe0, emissive: 0x1c8f72, emissiveIntensity: 2.2, roughness: 0.2 })
+    );
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.45, 0.018, 8, 40),
+      new THREE.MeshBasicMaterial({ color: 0x6fe3d6, transparent: true, opacity: 0.7 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    g.add(core, ring);
+    const y = world.getTerrainHeight(x, z) + 1.3;
+    g.position.set(x, y, z);
+    g.userData.baseY = y;
+    g.userData.spin = Math.random() * Math.PI;
+    scene.add(g);
+    spiritOrbs.push({ group: g, key, lore: SPIRIT_LORE[(chapter * 3 + i) % SPIRIT_LORE.length][1] });
+  });
+  updateSpiritHud();
+}
+
+function collectSpirit(orb: { group: THREE.Group; key: string; lore: string }): void {
+  collectedSpirits.add(orb.key);
+  spiritsFound += 1;
+  chapterSpirits += 1;
+  scene.remove(orb.group);
+  spiritOrbs = spiritOrbs.filter((o) => o !== orb);
+  updateSpiritHud();
+  audio.playDingShenSpell();
+  showStory(orb.lore, 3600);
+  vfx.spawnShockwave(orb.group.position, 3.2, 0x6fe3d6);
+  if (spiritsFound === 3) {
+    hero.maxHp += 20;
+    hero.hp = hero.maxHp;
+    showToast('灵蕴共鸣 · 气血上限 +20');
+  } else if (spiritsFound === 6) {
+    hero.maxMana += 15;
+    hero.mana = hero.maxMana;
+    showToast('灵蕴共鸣 · 法力上限 +15');
+  } else if (spiritsFound === 9) {
+    gourdCharges += 1;
+    showToast('九蕴归一 · 葫芦 +1');
+  }
+}
+
 function bumpCombo(): void {
   comboCount += 1;
   comboTimer = 2.2;
@@ -638,8 +735,8 @@ function showEnding(): void {
       '齐天大圣 · 金箍落下',
       '你渡了自己',
       `六根归位，你却一根未留。金箍从头上落下，花果山的风第一次没有血腥味。\n（业障 ${karma}）`,
-      '重游花果山第一回',
-      () => { roots = 0; karma = 0; damageBonus = 0; updateRootHud(); startChapter(0); }
+      '再入轮回 · NG+1',
+      () => { roots = 0; karma = 0; damageBonus = 0; ngPlus += 1; spiritsFound = 0; collectedSpirits.clear(); updateSpiritHud(); updateRootHud(); startChapter(0); showToast(`再入轮回 · NG+${ngPlus}`); }
     );
   } else {
     speak('ending-bad');
@@ -647,8 +744,8 @@ function showEnding(): void {
       '齐天大圣 · 新的妖王',
       '你成了自己打的那只妖',
       `六根归位，全部收下。你坐在凌霄殿上，听见山下又有人喊“大圣”。\n（业障 ${karma}）`,
-      '再走一遍',
-      () => { roots = 0; karma = 0; damageBonus = 0; updateRootHud(); startChapter(0); }
+      '再入轮回 · NG+1',
+      () => { roots = 0; karma = 0; damageBonus = 0; ngPlus += 1; spiritsFound = 0; collectedSpirits.clear(); updateSpiritHud(); updateRootHud(); startChapter(0); showToast(`再入轮回 · NG+${ngPlus}`); }
     );
   }
 }
@@ -858,7 +955,9 @@ requestAnimationFrame(animate);
           showToast('毫厘闪身 · 万法不侵！');
           return;
         }
-        hero.hp = Math.max(0, hero.hp - hitEv.damage);
+        const incoming = Math.round(hitEv.damage * (1 + ngPlus * 0.16));
+        hero.hp = Math.max(0, hero.hp - incoming);
+        chapterDamage += incoming;
         resetCombo();
         flashPlayerHit();
         vfx.shakeIntensity = Math.max(vfx.shakeIntensity, hitEv.isBossSlam ? 0.52 : 0.25);
@@ -893,10 +992,12 @@ requestAnimationFrame(animate);
           '火里有一根“嗔”。它一直在烧，连你也不放过。',
           '他叫了你一声“贤弟”。你想起自己也曾被压在山下。',
         ];
+        const elapsed = (performance.now() - chapterStartedAt) / 1000;
+        chapterRank = chapterDamage <= 25 && elapsed < 180 && chapterSpirits >= 2 ? 'S' : chapterDamage <= 70 && elapsed < 300 ? 'A' : 'B';
         openChoice(
           `${ACTIVE_CHAPTERS[currentChapter].code} · 六根之一`,
           isFinal ? '最后一根，怎么用？' : '这一根，怎么用？',
-          `${rootLines[currentChapter] ?? rootLines[0]}\n超度：回血、降低业障；吞噬：永久增伤、抬高业障。`,
+          `${rootLines[currentChapter] ?? rootLines[0]}\n本章评价：${chapterRank} · 灵蕴 ${chapterSpirits}/3\n超度：回血、降低业障；吞噬：永久增伤、抬高业障。`,
           '超度 · 放下',
           () => resolveRoot('mercy', isFinal),
           '吞噬 · 收下',
@@ -904,6 +1005,12 @@ requestAnimationFrame(animate);
         );
       }, 900);
     }
+  }
+
+  for (const o of spiritOrbs) {
+    o.group.rotation.y += rawDt * 1.6;
+    o.group.position.y = (o.group.userData.baseY as number) + Math.sin(now * 0.002 + o.group.userData.spin) * 0.18;
+    if (!modalOpen && o.group.position.distanceTo(hero.root.position) < 1.9) collectSpirit(o);
   }
 
   updateLockOn();
