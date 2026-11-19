@@ -126,6 +126,8 @@ let chapterDamage = 0;
 let chapterStartedAt = 0;
 let chapterRank = 'B';
 let ngPlus = 0;
+let bellCooldown = 0;
+let bellPrompted = false;
 const collectedSpirits = new Set<string>();
 let spiritOrbs: Array<{ group: THREE.Group; key: string; lore: string }> = [];
 
@@ -341,6 +343,20 @@ function performParry(): void {
   }
 }
 
+function tryRingBell(): void {
+  if (!gameStarted || modalOpen || paused || currentChapter !== 2 || bellCooldown > 0) return;
+  const dx = hero.root.position.x + 8;
+  const dz = hero.root.position.z - 4;
+  if (Math.hypot(dx, dz) > 4.8) return;
+  bellCooldown = 20;
+  const count = enemies.castDingShen(hero.root.position, 30);
+  audio.playDingShenSpell();
+  audio.playBossRoar();
+  vfx.spawnShockwave(new THREE.Vector3(-8, world.getTerrainHeight(-8, 4) + 1.5, 4), 16, 0xffe28a);
+  showStory('天钟一响 · 万妖定形。趁现在处决。', 3600);
+  showToast(count > 0 ? `天钟镇妖 · ${count} 名妖邪定身` : '天钟一响 · 余音护体');
+}
+
 function castSpell(slot: number): void {
   if (!gameStarted || modalOpen) return;
   if (slot === 1) {
@@ -462,6 +478,8 @@ document.getElementById('btn-start-game')!.addEventListener('click', async () =>
   spiritsFound = 0;
   collectedSpirits.clear();
   ngPlus = 0;
+  bellCooldown = 0;
+  bellPrompted = false;
   updateSpiritHud();
   updateRootHud();
   // Start gameplay immediately; audio (reverb + voice preload) initializes in parallel.
@@ -513,6 +531,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { togglePause(); return; }
   if (k === 'f') performParry();
   if (k === 'e') performSpinAttack();
+  if (k === 'g') tryRingBell();
   if (k === 'q') toggleLockOn();
   if (e.key === 'Tab') { e.preventDefault(); toggleLockOn(); }
   if (k === 'm') { const m = audio.toggleMute(); (document.getElementById('btn-mute') as HTMLButtonElement).textContent = m ? '声音：关' : '声音：开'; }
@@ -851,6 +870,11 @@ requestAnimationFrame(animate);
     return;
   }
   const dt = vfx.update(rawDt);
+  bellCooldown = Math.max(0, bellCooldown - dt);
+  if (currentChapter === 2 && !bellPrompted && !modalOpen && Math.hypot(hero.root.position.x + 8, hero.root.position.z - 4) < 5.5) {
+    bellPrompted = true;
+    showStory('天钟 · 按 G 镇住全场妖邪', 2800);
+  }
   if (comboTimer > 0) {
     comboTimer -= dt;
     if (comboTimer <= 0) resetCombo();

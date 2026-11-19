@@ -358,6 +358,9 @@ export class ChapterWorld {
           { file: 'red-banner', x: 7, z: -5, h: 4.0 },
           { file: 'stone-pagoda', x: 18, z: -8, h: 4.0 },
           { file: 'bamboo-shoot', x: -20, z: -9, h: 4.0 },
+          { file: 'fire-brazier', x: 8, z: 6, h: 2.6 },
+          { file: 'fire-brazier', x: -8, z: 6, h: 2.6 },
+          { file: 'obsidian-arch', x: -18, z: -14, h: 6.5 },
         ]
       : [
           { file: 'stone-lantern', x: -6, z: 3, h: 3.0 },
@@ -369,6 +372,10 @@ export class ChapterWorld {
           { file: 'hanging-lantern', x: 4, z: 7, h: 2.0 },
           { file: 'bronze-ding', x: -7, z: 6, h: 2.4 },
           { file: 'stone-memorial-arch', x: 19, z: -16, h: 6.5 },
+          { file: 'cloud-platform', x: 18, z: 10, h: 2.0 },
+          { file: 'celestial-railing', x: 12, z: 6, h: 2.2 },
+          { file: 'celestial-railing', x: -12, z: 6, h: 2.2 },
+          { file: 'celestial-bell', x: -8, z: 4, h: 3.4 },
         ];
     for (const d of defsByChapter) {
       try {
