@@ -21,6 +21,7 @@ export class WukongController {
   public bodyWrap = new THREE.Group();
   public staffPivot = new THREE.Group();
   public staffMesh!: THREE.Mesh;
+  public staffModel: THREE.Object3D | null = null;
   public slashArc!: THREE.Mesh;
   public nimbusCloud = new THREE.Group();
 
@@ -43,6 +44,7 @@ export class WukongController {
   public dodgeTimer = 0;
   public invulnTimer = 0;
   public parryTimer = 0;
+  public moveVel = new THREE.Vector3();
   public parryCooldown = 0;
 
   // Spell Cooldowns
@@ -88,6 +90,7 @@ export class WukongController {
     this.staffMesh = shaft;
     staffGroup.add(shaft);
     staffGroup.rotation.z = 0;
+    staffGroup.position.y = 0.62;
     this.staffPivot.position.set(0.46, 1.02, -0.36);
     this.staffPivot.add(staffGroup);
     this.bodyWrap.add(this.staffPivot);
@@ -164,7 +167,7 @@ export class WukongController {
           this.handBone = hb;
           this.root.add(this.staffPivot);
           this.staffPivot.position.set(0, 0, 0);
-          this.staffPivot.rotation.set(0, 0, 0);
+          this.staffPivot.rotation.set(0.08, 0, -0.24);
           this.staffPivot.scale.setScalar(0.9);
           const sg = this.staffPivot.children[0] as THREE.Group;
           if (sg) sg.rotation.set(0, 0, 0);
@@ -206,6 +209,29 @@ export class WukongController {
     cape.position.set(0, 0.95, -0.2);
     torso.castShadow = true;
     this.bodyWrap.add(torso, head, cape);
+  }
+
+  public async loadStaffModel(loader: GLTFLoader): Promise<void> {
+    try {
+      const head = await fetch('models/live-opt/ruyi-staff.glb', { method: 'HEAD' });
+      if (!head.ok) return;
+      const gltf = await loader.loadAsync('models/live-opt/ruyi-staff.glb');
+      const m = gltf.scene;
+      const box = new THREE.Box3().setFromObject(m);
+      const size = new THREE.Vector3(); const ctr = new THREE.Vector3();
+      box.getSize(size); box.getCenter(ctr);
+      const s = 2.75 / Math.max(0.01, size.y);
+      m.scale.setScalar(s);
+      m.position.set(-ctr.x * s, 0.58 - ctr.y * s, -ctr.z * s);
+      m.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; }
+      });
+      this.staffMesh.visible = false;
+      this.staffModel = m;
+      this.staffPivot.add(m);
+    } catch {
+      // keep the procedural staff if the generated one is unavailable
+    }
   }
 
   private playClipIndex(idx: number): void {
@@ -357,9 +383,13 @@ export class WukongController {
       this.dodgeTimer -= dt;
       speed = 18.0;
       const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-      this.root.position.addScaledVector(fwd, speed * dt);
-    } else if (isMoving && this.attackTimer <= 0.22) {
-      this.root.position.addScaledVector(moveDir, speed * dt);
+      this.moveVel.copy(fwd).multiplyScalar(speed);
+      this.root.position.addScaledVector(this.moveVel, dt);
+    } else {
+      const canMove = isMoving && this.attackTimer <= 0.22;
+      const desiredVel = canMove ? moveDir.clone().multiplyScalar(speed) : new THREE.Vector3();
+      this.moveVel.lerp(desiredVel, Math.min(1, dt * 9));
+      this.root.position.addScaledVector(this.moveVel, dt);
     }
 
     this.root.position.x = THREE.MathUtils.clamp(this.root.position.x, -34, 34);
@@ -400,6 +430,8 @@ export class WukongController {
       this.playClipIndex(this.isHeavySlam ? 5 : 3 + (this.comboStep % 2));
     } else if (isMoving && !this.onNimbus) {
       this.playClipIndex(1); // Sprint_Loop
+      const act = this.actions[this.activeActionIdx];
+      if (act) act.timeScale = THREE.MathUtils.clamp(this.moveVel.length() / 8.6, 0.7, 1.25);
     } else {
       this.playClipIndex(0); // Sword_Idle
     }
@@ -423,7 +455,7 @@ export class WukongController {
       if (!this.handAttached) this.staffPivot.rotation.set(0, 0, 0);
       (this.slashArc.material as THREE.MeshBasicMaterial).opacity = 0;
       if (isMoving && !this.onNimbus) {
-        this.bodyWrap.position.y = Math.abs(Math.sin(performance.now() * 0.015)) * 0.14;
+        this.bodyWrap.position.y = Math.abs(Math.sin(performance.now() * 0.012)) * 0.045;
       } else {
         this.bodyWrap.position.y = 0;
       }

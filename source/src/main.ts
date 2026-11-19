@@ -7,7 +7,7 @@ import { EffectComposer, RenderPass, EffectPass, BloomEffect, HueSaturationEffec
 import { WUKONG_CHAPTERS } from './data/ChaptersData';
 
 // v2: one polished Huaguoshan boss fight. Other chapters stay in data but are not exposed.
-const ACTIVE_CHAPTERS = WUKONG_CHAPTERS.slice(0, 1);
+const ACTIVE_CHAPTERS = WUKONG_CHAPTERS;
 import { WukongController } from './player/WukongController';
 import { EnemyManager } from './enemies/EnemyManager';
 import type { ActiveEnemy } from './enemies/EnemyManager';
@@ -91,6 +91,7 @@ const world = new ChapterWorld(scene);
 const enemies = new EnemyManager(scene, camera);
 const hero = new WukongController(scene);
 hero.loadHeroModel(gltfLoader);
+void hero.loadStaffModel(gltfLoader);
 
 // Game State
 let gameStarted = false;
@@ -711,6 +712,7 @@ requestAnimationFrame(animate);
   if (!modalOpen) {
     // 1. Update Sun Wukong
     hero.update(dt, keys, camYaw, (x, z) => world.getTerrainHeight(x, z));
+    world.resolveCollision(hero.root.position, 0.45);
 
     // 2. Check Wukong Staff Hit Detection during active swing window
     if (hero.attackTimer > 0.08 && hero.attackTimer < 0.48 && !hero.hitDealtThisSwing) {
@@ -850,7 +852,8 @@ requestAnimationFrame(animate);
             () => startChapter(currentChapter)
           );
         }
-      }
+      },
+      (p) => world.resolveCollision(p, 0.5)
     );
     audio.inCombat = anyAggro;
 
@@ -860,7 +863,7 @@ requestAnimationFrame(animate);
       audio.playVictory();
       speak('victory');
       setTimeout(() => {
-        const isFinal = true;
+        const isFinal = currentChapter >= ACTIVE_CHAPTERS.length - 1;
         const rootLines = [
           '他倒下时，胸口有一根金色的刺——那是你的“怒”。',
           '火里有一根“嗔”。它一直在烧，连你也不放过。',

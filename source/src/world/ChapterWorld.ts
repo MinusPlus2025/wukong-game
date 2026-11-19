@@ -18,6 +18,7 @@ export interface PeachPickup {
 export class ChapterWorld {
   public worldGroup = new THREE.Group();
   public peaches: PeachPickup[] = [];
+  public colliders: Array<{ x: number; z: number; r: number; h: number }> = [];
   public fireWallActive = false;
   public fireWallZ = -6.5;
 
@@ -86,6 +87,7 @@ export class ChapterWorld {
       this.worldGroup.remove(ch);
     }
     this.peaches = [];
+    this.colliders = [];
     this.fireWallGroup = new THREE.Group();
     this.fireWallActive = false;
     this.waterfallMesh = null;
@@ -291,6 +293,15 @@ export class ChapterWorld {
       { file: 'peach-branch', x: 12, z: 4, h: 4.0 },
       { file: 'peach-branch', x: -12, z: 5, h: 3.6 },
       { file: 'mountain-gate', x: 0, z: -30, h: 9.5 },
+      { file: 'stone-pagoda', x: -18, z: 8, h: 4.2 },
+      { file: 'war-drum', x: 9, z: 6, h: 2.2 },
+      { file: 'red-banner', x: -7, z: -6, h: 4.0 },
+      { file: 'red-banner', x: 7, z: -6, h: 4.0 },
+      { file: 'incense-burner', x: -3, z: 7, h: 2.0 },
+      { file: 'hanging-lantern', x: 4, z: 7, h: 2.0 },
+      { file: 'cliff-rock', x: -23, z: -12, h: 6.0 },
+      { file: 'bamboo-shoot', x: 17, z: 6, h: 4.2 },
+      { file: 'moon-gate', x: -20, z: -18, h: 5.5 },
     ];
     for (const d of defs) {
       try {
@@ -308,8 +319,25 @@ export class ChapterWorld {
           if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; }
         });
         this.worldGroup.add(m);
+        const radius = Math.max(size.x, size.z) * s * 0.42;
+        this.colliders.push({ x: d.x, z: d.z, r: Math.max(0.55, radius), h: d.h });
       } catch {
         // optional prop
+      }
+    }
+  }
+
+  public resolveCollision(pos: THREE.Vector3, radius = 0.45): void {
+    for (const c of this.colliders) {
+      if (pos.y > c.h - 0.05) continue;
+      const dx = pos.x - c.x;
+      const dz = pos.z - c.z;
+      const minDist = c.r + radius;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < minDist * minDist) {
+        const d = Math.sqrt(d2) || 0.001;
+        pos.x = c.x + (dx / d) * minDist;
+        pos.z = c.z + (dz / d) * minDist;
       }
     }
   }

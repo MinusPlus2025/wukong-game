@@ -25,6 +25,7 @@ export interface ActiveEnemy {
   brokenTimer: number;
   phase3: boolean;
   pattern: number;
+  vel: THREE.Vector3;
   dead: boolean;
   deathTimer: number;
   mixer: THREE.AnimationMixer | null;
@@ -140,6 +141,7 @@ export class EnemyManager {
         brokenTimer: 0,
         phase3: false,
         pattern: 0,
+        vel: new THREE.Vector3(),
         dead: false,
         deathTimer: 0,
         mixer: null,
@@ -334,7 +336,8 @@ export class EnemyManager {
     dt: number,
     playerPos: THREE.Vector3,
     terrainHeightFn: (x: number, z: number) => number,
-    onHitPlayer: (ev: EnemyHitPlayerEvent) => void
+    onHitPlayer: (ev: EnemyHitPlayerEvent) => void,
+    resolveCollision?: (pos: THREE.Vector3) => void
   ): boolean {
     let anyAggro = false;
 
@@ -409,6 +412,7 @@ export class EnemyManager {
         e.root.rotation.y = THREE.MathUtils.lerp(e.root.rotation.y, desiredYaw, dt * 6);
 
         if (e.windUpTimer > 0) {
+          e.vel.multiplyScalar(Math.max(0, 1 - dt * 10));
           this.playEnemyClip(e, e.phase2 ? 3 : 2);
           e.windUpTimer -= dt;
           const pulse = 0.42 + Math.abs(Math.sin(performance.now() * 0.02)) * 0.45;
@@ -449,13 +453,43 @@ export class EnemyManager {
           }
         } else {
           e.attackCooldown = Math.max(0, e.attackCooldown - dt);
-          if (dist > atkRange * 0.85) {
-            this.playEnemyClip(e, 1);
-            const moveSpd = (e.spec.isBoss ? 4.4 : 4.9) * (e.phase3 ? 1.55 : e.phase2 ? 1.3 : 1.0);
-            toPlayer.normalize();
-            e.root.position.addScaledVector(toPlayer, moveSpd * dt);
-            e.modelWrap.position.y = Math.abs(Math.sin(performance.now() * 0.011)) * 0.16;
-          } else if (e.attackCooldown <= 0) {
+          const moveSpd = (e.spec.isBoss ? 4.4 : 4.9) * (e.phase3 ? 1.55 : e.phase2 ? 1.3 : 1.0);
+          const wantsMove = dist > atkRange * 0.85;
+          const desired = wantsMove ? toPlayer.clone().normalize().multiplyScalar(moveSpd) : new THREE.Vector3();
+          const accel = wantsMove ? 6.5 : 10;
+          e.vel.x += (desired.x - e.vel.x) * Math.min(1, dt * accel);
+          e.vel.z += (desired.z - e.vel.z) * Math.min(1, dt * accel);
+          if (!wantsMove) e.vel.multiplyScalar(Math.max(0, 1 - dt * 7));
+          e.root.position.addScaledVector(e.vel, dt);
+          resolveCollision?.(e.root.position);
+
+          // Keep individual enemies from stacking into one body.
+          for (const other of this.enemies) {
+            if (other === e || other.dead) continue;
+            const ox = e.root.position.x - other.root.position.x;
+            const oz = e.root.position.z - other.root.position.z;
+            const min = (e.spec.scale + other.spec.scale) * 0.55;
+            const d2 = ox * ox + oz * oz;
+            if (d2 > 0.0001 && d2 < min * min) {
+              const d = Math.sqrt(d2);
+              e.root.position.x += (ox / d) * (min - d) * 0.35;
+              e.root.position.z += (oz / d) * (min - d) * 0.35;
+            }
+          }
+
+          if (e.vel.lengthSq() > 0.025) {
+            if (e.actions.length > 0) {
+              this.playEnemyClip(e, 1);
+              const act = e.actions[e.activeClipIdx];
+              if (act) act.timeScale = THREE.MathUtils.clamp(e.vel.length() / moveSpd, 0.6, 1.35);
+              e.modelWrap.position.y = 0;
+            } else {
+              // Static Lux3D minion: no skeleton. Lean and sway instead of fake hopping.
+              e.modelWrap.rotation.x = -0.09;
+              e.modelWrap.rotation.z = Math.sin(performance.now() * 0.008) * 0.035;
+              e.modelWrap.position.y = 0;
+            }
+          } else if (dist <= atkRange && e.attackCooldown <= 0) {
             // Start telegraphed wind-up so player can dodge or counter!
             if (e.spec.isBoss) {
               e.pattern = (e.pattern + 1) % 3;
@@ -465,6 +499,11 @@ export class EnemyManager {
             }
           } else {
             this.playEnemyClip(e, 0);
+            e.modelWrap.rotation.x = 0;
+            e.modelWrap.rotation.z = 0;
+            e.modelWrap.position.y = 0;
+            const act = e.actions[e.activeClipIdx];
+            if (act) act.timeScale = 1;
           }
         }
       } else {
