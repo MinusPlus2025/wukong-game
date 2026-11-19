@@ -179,6 +179,16 @@ export class EnemyManager {
           if ((obj as THREE.Mesh).isMesh) {
             obj.castShadow = true;
             obj.receiveShadow = true;
+            if (!enemy.spec.isBoss) {
+              const mat = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
+              if (mat && mat.color) {
+                const clone = mat.clone();
+                clone.color.multiplyScalar(0.62);
+                clone.emissive = new THREE.Color(0x1a0d08);
+                clone.emissiveIntensity = 0.18;
+                (obj as THREE.Mesh).material = clone;
+              }
+            }
           }
         });
         enemy.modelWrap.clear();

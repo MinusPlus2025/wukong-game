@@ -306,6 +306,9 @@ export class ChapterWorld {
       { file: 'cliff-rock', x: -23, z: -12, h: 6.0 },
       { file: 'bamboo-shoot', x: 17, z: 6, h: 4.2 },
       { file: 'moon-gate', x: -20, z: -18, h: 5.5 },
+      { file: 'peach-tree-single', x: -18, z: 10, h: 7.2 },
+      { file: 'stone-memorial-arch', x: -18, z: -16, h: 6.5 },
+      { file: 'bronze-ding', x: 8, z: 6, h: 2.4 },
     ];
     for (const d of defs) {
       try {
@@ -364,6 +367,8 @@ export class ChapterWorld {
           { file: 'stone-pagoda', x: -18, z: 8, h: 4.2 },
           { file: 'moon-gate', x: 20, z: -12, h: 5.5 },
           { file: 'hanging-lantern', x: 4, z: 7, h: 2.0 },
+          { file: 'bronze-ding', x: -7, z: 6, h: 2.4 },
+          { file: 'stone-memorial-arch', x: 19, z: -16, h: 6.5 },
         ];
     for (const d of defsByChapter) {
       try {
