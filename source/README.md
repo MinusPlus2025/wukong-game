@@ -13,7 +13,6 @@
 npm install
 mkdir -p public
 ln -s ../../models public/models
-ln -s ../../models/live-opt public/models/live-opt
 ln -s ../../worlds public/worlds
 npm run dev -- --port 5181
 ```
