@@ -9,6 +9,7 @@ export class WukongAudio {
   public muted = false;
   public inCombat = false;
   public bgmEnabled = true;
+  private synthBgm = false;
 
   private master!: Tone.Gain;
   private warmthFilter!: Tone.Filter;
@@ -27,6 +28,7 @@ export class WukongAudio {
   private impactNoise!: Tone.NoiseSynth;
   private bossRoar!: Tone.MonoSynth;
   private voices: Record<string, Tone.Player> = {};
+  private bgmPlayer: Tone.Player | null = null;
 
   private recordDest: MediaStreamAudioDestinationNode | null = null;
   private step = 0;
@@ -176,13 +178,25 @@ export class WukongAudio {
     for (const [k, url] of Object.entries(voiceMap)) {
       this.voices[k] = new Tone.Player({ url, volume: 2 }).connect(this.master);
     }
-    // Do not block gameplay on voice buffer decoding; players start when ready.
-    void Tone.loaded().catch(() => {});
+    // Real recorded Eastern drum score (CC BY 4.0, Kevin MacLeod).
+    this.bgmPlayer = new Tone.Player({
+      url: 'audio/bgm/battle.mp3',
+      loop: true,
+      volume: -11,
+      fadeIn: 2.5,
+      fadeOut: 1.2,
+    }).connect(this.master);
+    // Do not block gameplay on buffer decoding; voices/BGM start when ready.
+    void Tone.loaded().then(() => {
+      if (this.bgmEnabled && this.bgmPlayer && this.bgmPlayer.state !== 'started') {
+        this.bgmPlayer.start();
+      }
+    }).catch(() => {});
 
     Tone.getTransport().bpm.value = 104;
 
     new Tone.Loop((time) => {
-      if (this.muted || !this.bgmEnabled) return;
+      if (this.muted || !this.bgmEnabled || !this.synthBgm) return;
       const s = this.step++;
 
       // Sustain warm harmonic foundation every 2 bars
@@ -320,6 +334,7 @@ export class WukongAudio {
   public setBossPhase(on: boolean): void {
     if (!this.isReady) return;
     Tone.getTransport().bpm.rampTo(on ? 118 : 104, 1.2);
+    if (this.bgmPlayer) this.bgmPlayer.playbackRate = on ? 1.055 : 1;
   }
 
   public toggleMute(): boolean {

@@ -201,6 +201,33 @@ export class ChapterWorld {
     arenaDisc.receiveShadow = true;
     this.worldGroup.add(arenaDisc);
 
+    // Stone processional path from spawn to the boss altar.
+    if (config.index === 0) {
+      const pathTex = arenaTex.clone();
+      pathTex.wrapS = pathTex.wrapT = THREE.RepeatWrapping;
+      pathTex.repeat.set(2, 8);
+      pathTex.needsUpdate = true;
+      const pathGeo = new THREE.PlaneGeometry(7, 32, 4, 24);
+      pathGeo.rotateX(-Math.PI / 2);
+      const pp = pathGeo.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < pp.count; i++) {
+        const px = pp.getX(i), pz = pp.getZ(i) + 1;
+        pp.setY(i, this.getTerrainHeight(px, pz) + 0.065);
+      }
+      pp.needsUpdate = true;
+      pathGeo.computeVertexNormals();
+      const path = new THREE.Mesh(
+        pathGeo,
+        new THREE.MeshStandardMaterial({
+          map: pathTex, bumpMap: pathTex, bumpScale: 0.08,
+          color: 0xc2c9b8, roughness: 0.64, metalness: 0.07,
+        })
+      );
+      path.position.set(0, 0, 1);
+      path.receiveShadow = true;
+      this.worldGroup.add(path);
+    }
+
     const runeRing = new THREE.Mesh(
       new THREE.RingGeometry(10.6, 11.1, 64),
       new THREE.MeshBasicMaterial({

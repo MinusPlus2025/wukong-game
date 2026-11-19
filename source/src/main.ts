@@ -7,6 +7,7 @@ import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocess
 import { WUKONG_CHAPTERS } from './data/ChaptersData';
 import { WukongController } from './player/WukongController';
 import { EnemyManager } from './enemies/EnemyManager';
+import type { ActiveEnemy } from './enemies/EnemyManager';
 import { ChapterWorld } from './world/ChapterWorld';
 import { CombatVFX } from './vfx/CombatVFX';
 import { WukongAudio } from './audio/WukongAudio';
@@ -30,6 +31,19 @@ const spark = new SparkRenderer({ renderer });
 scene.add(spark);
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 280);
 camera.position.set(0, 6.5, 22);
+
+// Lock-on reticle (screen-facing diamond above the target)
+const lockCanvas = document.createElement('canvas');
+lockCanvas.width = lockCanvas.height = 64;
+const lc = lockCanvas.getContext('2d')!;
+lc.translate(32, 32); lc.rotate(Math.PI / 4);
+lc.strokeStyle = '#ffd166'; lc.lineWidth = 3; lc.strokeRect(-13, -13, 26, 26);
+lc.strokeStyle = 'rgba(255,90,60,.85)'; lc.lineWidth = 1.5; lc.strokeRect(-7, -7, 14, 14);
+const lockSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(lockCanvas), transparent: true, depthTest: false }));
+lockSprite.scale.set(1.1, 1.1, 1);
+lockSprite.renderOrder = 20;
+lockSprite.visible = false;
+scene.add(lockSprite);
 
 // Cinematic Mythic Lighting
 const hemiLight = new THREE.HemisphereLight(0xffeacc, 0x1b2432, 1.05);
@@ -82,6 +96,7 @@ let karma = 0;
 let damageBonus = 0;
 let camYaw = 0;
 let camPitch = 0.28;
+let lockTarget: ActiveEnemy | null = null;
 let heavySlamBeans = 1;
 let chapterClearedTriggered = false;
 let chapterReady = false;
@@ -153,6 +168,8 @@ async function startChapter(idx: number): Promise<void> {
   const cfg = WUKONG_CHAPTERS[currentChapter];
   chapterClearedTriggered = false;
   chapterReady = false;
+  lockTarget = null;
+  lockSprite.visible = false;
   modalOpen = false;
   chapterLoadingText.textContent = `正在展开${cfg.title.split(' · ')[0]}`;
   chapterLoading.classList.remove('hidden');
@@ -287,9 +304,52 @@ function useImmortalGourd(): void {
   vfx.spawnFloatingText(hero.root.position, '+135 仙酿回血', true);
 }
 
+function pickLockTarget(): ActiveEnemy | null {
+  let best: ActiveEnemy | null = null;
+  let bestDist = 26;
+  for (const e of enemies.getAliveEnemies()) {
+    const d = e.root.position.distanceTo(hero.root.position);
+    if (d < bestDist) { bestDist = d; best = e; }
+  }
+  return best;
+}
+
+function toggleLockOn(): void {
+  if (!gameStarted || modalOpen) return;
+  if (lockTarget && !lockTarget.dead) {
+    lockTarget = null;
+    lockSprite.visible = false;
+    showToast('解除锁定');
+    return;
+  }
+  lockTarget = pickLockTarget();
+  if (lockTarget) showToast(`锁定 · ${lockTarget.spec.name}`);
+}
+
+function updateLockOn(): void {
+  if (lockTarget && (lockTarget.dead || lockTarget.root.position.distanceTo(hero.root.position) > 32)) {
+    lockTarget = null;
+  }
+  if (!lockTarget) { lockSprite.visible = false; return; }
+  lockSprite.visible = true;
+  lockSprite.position.set(
+    lockTarget.root.position.x,
+    lockTarget.root.position.y + (lockTarget.spec.isBoss ? 3.6 : 2.6),
+    lockTarget.root.position.z
+  );
+  const scale = lockTarget.spec.isBoss ? 1.6 : 1.0;
+  lockSprite.scale.set(scale, scale, 1);
+}
+
+function lerpAngle(a: number, b: number, t: number): number {
+  const d = THREE.MathUtils.euclideanModulo(b - a + Math.PI, Math.PI * 2) - Math.PI;
+  return a + d * Math.min(1, t);
+}
+
 function autoFaceNearestEnemy(maxRange: number): void {
   let bestDist = maxRange;
-  let targetPos: THREE.Vector3 | null = null;
+  let targetPos: THREE.Vector3 | null = lockTarget && !lockTarget.dead ? lockTarget.root.position : null;
+  if (targetPos) bestDist = targetPos.distanceTo(hero.root.position);
   for (const e of enemies.getAliveEnemies()) {
     const d = e.root.position.distanceTo(hero.root.position);
     if (d < bestDist) {
@@ -357,6 +417,8 @@ window.addEventListener('keydown', (e) => {
   if (k === '3') castSpell(3);
   if (k === '4') castSpell(4);
   if (k === 'r') useImmortalGourd();
+  if (k === 'q') toggleLockOn();
+  if (e.key === 'Tab') { e.preventDefault(); toggleLockOn(); }
   if (k === 'm') { const m = audio.toggleMute(); (document.getElementById('btn-mute') as HTMLButtonElement).textContent = m ? '声音：关' : '声音：开'; }
 });
 
@@ -366,6 +428,7 @@ window.addEventListener('keyup', (e) => {
 
 canvas.addEventListener('mousedown', (e) => {
   if (!gameStarted || modalOpen) return;
+  if (e.button === 1) { e.preventDefault(); toggleLockOn(); return; }
   if (e.button === 0) performLightAttack();
   if (e.button === 2) performHeavySlam();
 });
@@ -374,7 +437,7 @@ window.addEventListener('contextmenu', (e) => e.preventDefault());
 window.addEventListener('mousemove', (e) => {
   if (!gameStarted || modalOpen) return;
   // Orbit camera smoothly when moving mouse (or holding pointer lock)
-  if (document.pointerLockElement === canvas || e.buttons === 1 || Math.abs(e.movementX) > 0) {
+  if (!lockTarget && (document.pointerLockElement === canvas || e.buttons === 1 || Math.abs(e.movementX) > 0)) {
     camYaw -= e.movementX * 0.0032;
     camPitch = THREE.MathUtils.clamp(camPitch + e.movementY * 0.0022, 0.08, 0.72);
   }
@@ -665,8 +728,18 @@ requestAnimationFrame(animate);
     }
   }
 
+  updateLockOn();
+  if (lockTarget) {
+    const lx = lockTarget.root.position.x - hero.root.position.x;
+    const lz = lockTarget.root.position.z - hero.root.position.z;
+    const targetYaw = Math.atan2(lx, lz);
+    camYaw = lerpAngle(camYaw, targetYaw + Math.PI, rawDt * 5.5);
+    hero.yaw = targetYaw;
+    hero.root.rotation.y = targetYaw;
+  }
+
   // 7. Smooth 3rd-Person Action Follow Camera + Trauma Shake
-  const camDist = hero.onNimbus ? 9.2 : 7.1;
+  const camDist = lockTarget ? (lockTarget.spec.isBoss ? 8.6 : 6.4) : (hero.onNimbus ? 9.2 : 7.1);
   const camHeight = hero.onNimbus ? 4.2 : 3.0 + camPitch * 4.6;
   const desiredCamPos = new THREE.Vector3(
     hero.root.position.x + Math.sin(camYaw) * camDist,
