@@ -225,6 +225,8 @@ export class WukongController {
       const size = new THREE.Vector3(); const ctr = new THREE.Vector3();
       box.getSize(size); box.getCenter(ctr);
       const s = 2.75 / Math.max(0.01, size.y);
+      // Generated staff has a broken bounding box (0.03m) -> scale 86x. Reject it.
+      if (!Number.isFinite(s) || s > 6 || s < 0.05) return;
       m.scale.setScalar(s);
       m.position.set(-ctr.x * s, 0.58 - ctr.y * s, -ctr.z * s);
       m.traverse((o) => {
