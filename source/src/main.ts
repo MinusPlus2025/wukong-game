@@ -290,6 +290,14 @@ function performDodge(): void {
   }
 }
 
+function performSpinAttack(): void {
+  if (!gameStarted || modalOpen || paused) return;
+  if (!hero.startSpinAttack()) return;
+  audio.playLightSwing(1);
+  audio.playVoice('fan');
+  showToast('棍势 · 横扫千军');
+}
+
 function performParry(): void {
   if (!gameStarted || modalOpen || paused) return;
   const broken = enemies.getAliveEnemies().find((e) => e.brokenTimer > 0 && e.root.position.distanceTo(hero.root.position) < 4.2);
@@ -476,6 +484,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'r') useImmortalGourd();
   if (e.key === 'Escape') { togglePause(); return; }
   if (k === 'f') performParry();
+  if (k === 'e') performSpinAttack();
   if (k === 'q') toggleLockOn();
   if (e.key === 'Tab') { e.preventDefault(); toggleLockOn(); }
   if (k === 'm') { const m = audio.toggleMute(); (document.getElementById('btn-mute') as HTMLButtonElement).textContent = m ? '声音：关' : '声音：开'; }
@@ -715,8 +724,8 @@ requestAnimationFrame(animate);
     world.resolveCollision(hero.root.position, 0.45);
 
     // 2. Check Wukong Staff Hit Detection during active swing window
-    if (hero.attackTimer > 0.08 && hero.attackTimer < 0.48 && !hero.hitDealtThisSwing) {
-      const reach = hero.isHeavySlam ? 5.6 : 3.5;
+    if (hero.attackTimer > 0.08 && hero.attackTimer < (hero.isFinisher ? 0.62 : 0.48) && !hero.hitDealtThisSwing) {
+      const reach = hero.isHeavySlam ? 5.6 : hero.isFinisher ? 4.3 : 3.5;
       const fwd = new THREE.Vector3(Math.sin(hero.yaw), 0, Math.cos(hero.yaw));
       const strikeCenter = hero.root.position.clone().addScaledVector(fwd, hero.isHeavySlam ? 2.4 : 1.5);
 
@@ -725,7 +734,7 @@ requestAnimationFrame(animate);
         if (e.root.position.distanceTo(strikeCenter) <= reach + e.spec.scale * 0.45) {
           landed = true;
           const baseDmg = Math.round(
-            (hero.isHeavySlam ? 85 + heavySlamBeans * 58 : 34 + hero.comboStep * 9) * (1 + damageBonus) * (1 + Math.min(comboCount, 20) * 0.015) * (e.brokenTimer > 0 ? 2.2 : 1)
+            (hero.isHeavySlam ? 85 + heavySlamBeans * 58 : 34 + hero.comboStep * 9 + (hero.isFinisher ? 22 : 0)) * (1 + damageBonus) * (1 + Math.min(comboCount, 20) * 0.015) * (e.brokenTimer > 0 ? 2.2 : 1)
           );
           const enteredP2 = enemies.applyDamage(e, baseDmg, fwd);
           const broke = enemies.addPosture(e, hero.isHeavySlam ? 36 : 15);
@@ -808,6 +817,21 @@ requestAnimationFrame(animate);
       fireBurnCooldown = 0.9;
       hero.hp = Math.max(10, hero.hp - 15);
       showToast('三昧真火阻路！快按 [3] 挥动芭蕉宝扇熄火！');
+    }
+
+    // Spin sweep: hits every nearby enemy once.
+    if (hero.spinTimer > 0.15 && !hero.spinHitDealt) {
+      hero.spinHitDealt = true;
+      for (const e of enemies.getAliveEnemies()) {
+        if (e.root.position.distanceTo(hero.root.position) <= 4.8) {
+          const dmg = 72;
+          enemies.applyDamage(e, dmg, new THREE.Vector3(Math.sin(hero.yaw), 0, Math.cos(hero.yaw)));
+          enemies.addPosture(e, 24);
+          vfx.triggerHitJuice(e.root.position.clone().add(new THREE.Vector3(0, 1.3, 0)), dmg, true, `${dmg}`);
+        }
+      }
+      vfx.spawnShockwave(hero.root.position, 5.0, 0xffd166);
+      audio.playStaffHit(true);
     }
 
     // 5. Update Enemies & Boss AI

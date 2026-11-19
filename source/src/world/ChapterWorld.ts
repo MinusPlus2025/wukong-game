@@ -19,6 +19,7 @@ export class ChapterWorld {
   public worldGroup = new THREE.Group();
   public peaches: PeachPickup[] = [];
   public colliders: Array<{ x: number; z: number; r: number; h: number }> = [];
+  private landmarkMixer: THREE.AnimationMixer | null = null;
   public fireWallActive = false;
   public fireWallZ = -6.5;
 
@@ -90,6 +91,7 @@ export class ChapterWorld {
     }
     this.peaches = [];
     this.colliders = [];
+    this.landmarkMixer = null;
     this.fireWallGroup = new THREE.Group();
     this.fireWallActive = false;
     this.waterfallMesh = null;
@@ -414,6 +416,10 @@ export class ChapterWorld {
           }
         });
         this.worldGroup.add(m);
+        if (gltf.animations && gltf.animations.length > 0) {
+          this.landmarkMixer = new THREE.AnimationMixer(m);
+          this.landmarkMixer.clipAction(gltf.animations[0]).play();
+        }
         return;
       } catch {
         // try next fallback
@@ -724,6 +730,7 @@ export class ChapterWorld {
   }
 
   public updateAmbient(dt: number, time: number): void {
+    if (this.landmarkMixer) this.landmarkMixer.update(dt);
     if (this.ambientMotes) {
       const a = this.ambientMotes.geometry.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < a.count; i++) {

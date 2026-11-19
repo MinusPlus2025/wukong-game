@@ -37,6 +37,10 @@ export class WukongController {
   public onNimbus = false;
 
   public comboStep = 0;
+  public isFinisher = false;
+  public spinTimer = 0;
+  public spinCooldown = 0;
+  public spinHitDealt = false;
   public attackTimer = 0;
   public isHeavySlam = false;
   public hitDealtThisSwing = false;
@@ -258,13 +262,22 @@ export class WukongController {
 
   public startLightAttack(): boolean {
     if (this.attackTimer > 0.14 || this.dodgeTimer > 0) return false;
-    this.comboStep = (this.comboStep % 3) + 1;
-    this.attackTimer = 0.36;
+    this.comboStep = (this.comboStep % 4) + 1;
+    this.isFinisher = this.comboStep === 4;
+    this.attackTimer = this.isFinisher ? 0.52 : 0.36;
     this.isHeavySlam = false;
     this.hitDealtThisSwing = false;
     (this.slashArc.material as THREE.MeshBasicMaterial).color.setHex(0xffdf7a);
     (this.slashArc.material as THREE.MeshBasicMaterial).opacity = 0.85;
     this.slashArc.rotation.z = this.comboStep * 1.4;
+    return true;
+  }
+
+  public startSpinAttack(): boolean {
+    if (this.spinCooldown > 0 || this.spinTimer > 0 || this.attackTimer > 0.2 || this.dodgeTimer > 0) return false;
+    this.spinTimer = 0.64;
+    this.spinCooldown = 4.0;
+    this.spinHitDealt = false;
     return true;
   }
 
@@ -274,6 +287,7 @@ export class WukongController {
     this.focusPoints = Math.max(0, this.focusPoints - beans * 100);
     this.attackTimer = 0.62;
     this.isHeavySlam = true;
+    this.isFinisher = false;
     this.hitDealtThisSwing = false;
     this.velY = 7.5; // Leap into the air with giant expanding Jingu Bang!
     this.isGrounded = false;
@@ -427,7 +441,7 @@ export class WukongController {
     if (this.dodgeTimer > 0) {
       this.playClipIndex(2); // Roll
     } else if (this.attackTimer > 0) {
-      this.playClipIndex(this.isHeavySlam ? 5 : 3 + (this.comboStep % 2));
+      this.playClipIndex(this.isHeavySlam ? 5 : this.isFinisher ? 5 : 3 + (this.comboStep % 2));
     } else if (isMoving && !this.onNimbus) {
       this.playClipIndex(1); // Sprint_Loop
       const act = this.actions[this.activeActionIdx];
@@ -438,6 +452,13 @@ export class WukongController {
 
     this.parryTimer = Math.max(0, this.parryTimer - dt);
     this.parryCooldown = Math.max(0, this.parryCooldown - dt);
+    this.spinCooldown = Math.max(0, this.spinCooldown - dt);
+    if (this.spinTimer > 0) {
+      this.spinTimer -= dt;
+      this.bodyWrap.rotation.y += dt * 13;
+      this.playClipIndex(4);
+      if (this.spinTimer <= 0) this.bodyWrap.rotation.y = 0;
+    }
     if (this.attackTimer > 0) {
       this.attackTimer -= dt;
       const swingProg = 1 - Math.max(0, this.attackTimer) / (this.isHeavySlam ? 0.62 : 0.36);
@@ -447,7 +468,8 @@ export class WukongController {
         if (!this.handAttached) this.staffPivot.rotation.x = -1.6 + swingProg * 3.1;
       } else {
         this.staffMesh.scale.set(1, 1, 1);
-        this.staffPivot.rotation.set(0, (swingProg - 0.5) * 0.7, 0.1);
+        if (this.isFinisher) this.staffPivot.rotation.set(-1.1 + swingProg * 2.4, 0, 0.1);
+        else this.staffPivot.rotation.set(0, (swingProg - 0.5) * 0.7, 0.1);
       }
       (this.slashArc.material as THREE.MeshBasicMaterial).opacity *= 0.88;
     } else {
