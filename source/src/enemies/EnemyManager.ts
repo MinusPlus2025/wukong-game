@@ -20,6 +20,11 @@ export interface ActiveEnemy {
   attackCooldown: number;
   hitFlashTimer: number;
   staggerTimer: number;
+  posture: number;
+  maxPosture: number;
+  brokenTimer: number;
+  phase3: boolean;
+  pattern: number;
   dead: boolean;
   deathTimer: number;
   mixer: THREE.AnimationMixer | null;
@@ -28,6 +33,7 @@ export interface ActiveEnemy {
 }
 
 export interface EnemyHitPlayerEvent {
+  enemy: ActiveEnemy;
   damage: number;
   enemyName: string;
   isBossSlam: boolean;
@@ -129,6 +135,11 @@ export class EnemyManager {
         attackCooldown: 1.4 + Math.random() * 0.8,
         hitFlashTimer: 0,
         staggerTimer: 0,
+        posture: 0,
+        maxPosture: spec.isBoss ? 120 : 55,
+        brokenTimer: 0,
+        phase3: false,
+        pattern: 0,
         dead: false,
         deathTimer: 0,
         mixer: null,
@@ -249,6 +260,12 @@ export class EnemyManager {
     }
 
     // Boss 50% HP Phase-2 "法天象地" Enrage!
+    if (enemy.spec.isBoss && !enemy.phase3 && enemy.hp > 0 && enemy.hp <= enemy.maxHp * 0.2) {
+      enemy.phase3 = true;
+      enemy.phase2 = true;
+      enemy.modelWrap.scale.setScalar(1.36);
+    }
+
     let triggeredPhase2 = false;
     if (enemy.spec.isBoss && !enemy.phase2 && enemy.hp > 0 && enemy.hp <= enemy.maxHp * 0.5) {
       enemy.phase2 = true;
@@ -264,6 +281,20 @@ export class EnemyManager {
       enemy.hpBarWrap.style.opacity = '0';
     }
     return triggeredPhase2;
+  }
+
+  public addPosture(enemy: ActiveEnemy, amount: number): boolean {
+    if (enemy.dead || enemy.brokenTimer > 0) return false;
+    enemy.posture = Math.min(enemy.maxPosture, enemy.posture + amount);
+    if (enemy.posture >= enemy.maxPosture) {
+      enemy.posture = 0;
+      enemy.brokenTimer = enemy.spec.isBoss ? 1.2 : 1.6;
+      enemy.staggerTimer = Math.max(enemy.staggerTimer, enemy.brokenTimer);
+      enemy.windUpTimer = 0;
+      (enemy.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
+      return true;
+    }
+    return false;
   }
 
   public castDingShen(origin: THREE.Vector3, range = 14): number {
@@ -322,7 +353,7 @@ export class EnemyManager {
       }
 
       if (e.mixer && e.frozenTimer <= 0) {
-        e.mixer.update(dt * (e.phase2 ? 1.35 : 1.0));
+        e.mixer.update(dt * (e.phase3 ? 1.55 : e.phase2 ? 1.35 : 1.0));
       }
 
       // Hit recoil pulse
@@ -344,6 +375,14 @@ export class EnemyManager {
         continue;
       } else {
         (e.sealRing.material as THREE.MeshBasicMaterial).opacity = 0;
+      }
+
+      if (e.brokenTimer > 0) {
+        e.brokenTimer = Math.max(0, e.brokenTimer - dt);
+        e.modelWrap.rotation.z = Math.sin(performance.now() * 0.03) * 0.06;
+      } else {
+        e.modelWrap.rotation.z = 0;
+        e.posture = Math.max(0, e.posture - dt * 3.5);
       }
 
       if (e.staggerTimer > 0) {
@@ -374,6 +413,7 @@ export class EnemyManager {
           e.windUpTimer -= dt;
           const pulse = 0.42 + Math.abs(Math.sin(performance.now() * 0.02)) * 0.45;
           (e.telegraphRing.material as THREE.MeshBasicMaterial).opacity = pulse;
+          e.telegraphRing.scale.setScalar(e.spec.isBoss ? (e.pattern === 2 ? 1.7 : e.pattern === 1 ? 1.25 : 1) : 1);
           e.modelWrap.position.y = Math.sin((1 - e.windUpTimer) * Math.PI) * (e.spec.isBoss ? 1.15 : 0.45);
 
           if (e.windUpTimer <= 0) {
@@ -382,13 +422,27 @@ export class EnemyManager {
             (e.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
             e.attackCooldown = e.phase2 ? 1.35 : e.spec.isBoss ? 2.1 : 1.85;
 
+            const isBoss = e.spec.isBoss;
+            let hitRadius = isBoss ? (e.phase2 ? 5.2 : 4.5) : 2.75;
+            let isSlam = isBoss;
+            if (isBoss && e.pattern === 1) {
+              // Charge: close the gap before the hit.
+              const chargeDir = new THREE.Vector3(playerPos.x - e.root.position.x, 0, playerPos.z - e.root.position.z).normalize();
+              e.root.position.addScaledVector(chargeDir, 3.2);
+              hitRadius = 3.4;
+              isSlam = true;
+            } else if (isBoss && e.pattern === 2) {
+              // Ground shockwave: larger, slower hit.
+              hitRadius = 7.4;
+              isSlam = true;
+            }
             const currentDist = e.root.position.distanceTo(playerPos);
-            const hitRadius = e.spec.isBoss ? (e.phase2 ? 5.2 : 4.5) : 2.75;
             if (currentDist <= hitRadius) {
               onHitPlayer({
-                damage: e.phase2 ? Math.round(e.spec.atk * 1.35) : e.spec.atk,
+                damage: e.phase3 ? Math.round(e.spec.atk * 1.65) : e.phase2 ? Math.round(e.spec.atk * 1.35) : e.spec.atk,
                 enemyName: e.spec.name,
-                isBossSlam: e.spec.isBoss,
+                isBossSlam: isSlam,
+                enemy: e,
                 pos: e.root.position.clone(),
               });
             }
@@ -397,13 +451,18 @@ export class EnemyManager {
           e.attackCooldown = Math.max(0, e.attackCooldown - dt);
           if (dist > atkRange * 0.85) {
             this.playEnemyClip(e, 1);
-            const moveSpd = (e.spec.isBoss ? 4.4 : 4.9) * (e.phase2 ? 1.3 : 1.0);
+            const moveSpd = (e.spec.isBoss ? 4.4 : 4.9) * (e.phase3 ? 1.55 : e.phase2 ? 1.3 : 1.0);
             toPlayer.normalize();
             e.root.position.addScaledVector(toPlayer, moveSpd * dt);
             e.modelWrap.position.y = Math.abs(Math.sin(performance.now() * 0.011)) * 0.16;
           } else if (e.attackCooldown <= 0) {
             // Start telegraphed wind-up so player can dodge or counter!
-            e.windUpTimer = e.spec.isBoss ? (e.phase2 ? 0.68 : 0.85) : 0.65;
+            if (e.spec.isBoss) {
+              e.pattern = (e.pattern + 1) % 3;
+              e.windUpTimer = [e.phase2 ? 0.68 : 0.9, 0.5, 1.15][e.pattern];
+            } else {
+              e.windUpTimer = 0.65;
+            }
           } else {
             this.playEnemyClip(e, 0);
           }

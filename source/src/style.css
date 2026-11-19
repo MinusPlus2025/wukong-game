@@ -848,3 +848,16 @@ body.eva-alert .boss-name{color:#ff5a3c!important;text-shadow:0 0 18px rgba(255,
 .pause-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .pause-actions .btn-gold-seal{min-width:160px;border-radius:1px}
 .pause-controls{margin-top:22px;font-family:'Menlo',monospace;font-size:9px;letter-spacing:.08em;color:#6f665b}
+
+.v2-tag{font-family:'Menlo',monospace;font-size:8px;letter-spacing:.18em;color:#6fe3d6;border:1px solid rgba(111,227,214,.35);padding:4px 8px;margin-left:2px}
+
+.boss-posture-outer{height:4px;margin-top:4px;background:rgba(255,255,255,.1);overflow:hidden}
+.boss-posture-fill{height:100%;width:0%;background:linear-gradient(90deg,#6fe3d6,#f19e1f);transition:width .1s}
+
+.boss-intro{position:fixed;inset:0;z-index:53;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 48%,rgba(0,0,0,.08),rgba(2,2,4,.82));pointer-events:none;transition:opacity .45s ease}
+.boss-intro.hidden{opacity:0}
+.bi-kicker{font-family:'Menlo',monospace;font-size:9px;letter-spacing:.36em;color:#f19e1f}
+.bi-rule{width:min(620px,70vw);height:1px;background:linear-gradient(90deg,transparent,#f19e1f,transparent);margin:16px 0 12px}
+.bi-name{font-family:'Ma Shan Zheng',serif;font-size:clamp(56px,8vw,104px);color:#fff3cf;margin:0;text-shadow:0 0 40px rgba(241,158,31,.28)}
+.bi-title{font-family:'PingFang SC',sans-serif;font-size:15px;letter-spacing:.34em;color:#d6c6ad;margin:10px 0 0}
+.bi-bottom{position:absolute;bottom:9vh;font-family:'Menlo',monospace;font-size:8px;letter-spacing:.26em;color:rgba(111,227,214,.65)}

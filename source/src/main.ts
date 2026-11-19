@@ -5,6 +5,9 @@ import { SparkRenderer } from '@sparkjsdev/spark';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { EffectComposer, RenderPass, EffectPass, BloomEffect, HueSaturationEffect, BrightnessContrastEffect, VignetteEffect } from 'postprocessing';
 import { WUKONG_CHAPTERS } from './data/ChaptersData';
+
+// v2: one polished Huaguoshan boss fight. Other chapters stay in data but are not exposed.
+const ACTIVE_CHAPTERS = WUKONG_CHAPTERS.slice(0, 1);
 import { WukongController } from './player/WukongController';
 import { EnemyManager } from './enemies/EnemyManager';
 import type { ActiveEnemy } from './enemies/EnemyManager';
@@ -106,6 +109,8 @@ let chapterReady = false;
 let fireBurnCooldown = 0;
 let lastComboVoice = 0;
 let paused = false;
+let cinematicTimer = 0;
+let cinematicBoss: ActiveEnemy | null = null;
 let lowQuality = false;
 let fpsTime = 0;
 let fpsFrames = 0;
@@ -125,6 +130,10 @@ const bossNameEl = document.getElementById('boss-name')!;
 const bossTitleEl = document.getElementById('boss-title')!;
 const bossPhaseTag = document.getElementById('boss-phase-tag')!;
 const bossBarFill = document.getElementById('boss-bar-fill')!;
+const bossPostureFill = document.getElementById('boss-posture-fill')!;
+const bossIntro = document.getElementById('boss-intro')!;
+const bossIntroName = document.getElementById('bi-name')!;
+const bossIntroTitle = document.getElementById('bi-title')!;
 const chapterBanner = document.getElementById('chapter-banner')!;
 const bannerCode = document.getElementById('banner-code')!;
 const bannerTitle = document.getElementById('banner-title')!;
@@ -177,8 +186,8 @@ function showToast(msg: string): void {
 }
 
 async function startChapter(idx: number): Promise<void> {
-  currentChapter = THREE.MathUtils.clamp(idx, 0, WUKONG_CHAPTERS.length - 1);
-  const cfg = WUKONG_CHAPTERS[currentChapter];
+  currentChapter = THREE.MathUtils.clamp(idx, 0, ACTIVE_CHAPTERS.length - 1);
+  const cfg = ACTIVE_CHAPTERS[currentChapter];
   chapterClearedTriggered = false;
   chapterReady = false;
   lockTarget = null;
@@ -223,7 +232,16 @@ async function startChapter(idx: number): Promise<void> {
   await enemies.spawnChapterEnemies(cfg.enemies, gltfLoader, (x, z) => world.getTerrainHeight(x, z));
   // Give the player one beat to land before clear can trigger.
   window.setTimeout(() => { chapterReady = true; chapterLoading.classList.add('hidden'); }, 900);
-  const bossName = cfg.enemies.find((e) => e.isBoss)?.name ?? '';
+  const bossSpec = cfg.enemies.find((e) => e.isBoss);
+  const bossName = bossSpec?.name ?? '';
+  cinematicBoss = enemies.getActiveBoss();
+  if (cinematicBoss) {
+    bossIntroName.textContent = bossName;
+    bossIntroTitle.textContent = bossSpec?.title ?? '花果山妖王';
+    chapterBanner.classList.add('hidden');
+    bossIntro.classList.remove('hidden');
+    cinematicTimer = 2.8;
+  }
   window.setTimeout(() => { showStory(`${cfg.code} · ${cfg.title}　|　妖王：${bossName}`, 3800); speak('boss-intro'); }, 1300);
   window.setTimeout(() => { audio.playBossRoar(); }, 1200);
 }
@@ -268,6 +286,25 @@ function performDodge(): void {
       audio.playPerfectDodge();
       showToast('幻影闪身 · 完美识破 (+1 棍势豆)');
     }
+  }
+}
+
+function performParry(): void {
+  if (!gameStarted || modalOpen || paused) return;
+  const broken = enemies.getAliveEnemies().find((e) => e.brokenTimer > 0 && e.root.position.distanceTo(hero.root.position) < 4.2);
+  if (broken) {
+    const dmg = broken.spec.isBoss ? 210 : 260;
+    enemies.applyDamage(broken, dmg);
+    vfx.triggerHitJuice(broken.root.position.clone().add(new THREE.Vector3(0, 1.3, 0)), dmg, true, `处决 ${dmg}!`);
+    vfx.spawnShockwave(broken.root.position, 6.5, 0xffd166);
+    audio.playStaffHit(true);
+    audio.playPerfectDodge();
+    showToast(`处决 · ${broken.spec.name}`);
+    return;
+  }
+  if (hero.startParry()) {
+    audio.playDodge();
+    showToast('棍花 · 弹反窗口');
   }
 }
 
@@ -437,6 +474,7 @@ window.addEventListener('keydown', (e) => {
   if (k === '4') castSpell(4);
   if (k === 'r') useImmortalGourd();
   if (e.key === 'Escape') { togglePause(); return; }
+  if (k === 'f') performParry();
   if (k === 'q') toggleLockOn();
   if (e.key === 'Tab') { e.preventDefault(); toggleLockOn(); }
   if (k === 'm') { const m = audio.toggleMute(); (document.getElementById('btn-mute') as HTMLButtonElement).textContent = m ? '声音：关' : '声音：开'; }
@@ -645,6 +683,24 @@ requestAnimationFrame(animate);
   }
 
   if (paused) { composer.render(rawDt); return; }
+  if (cinematicTimer > 0) {
+    cinematicTimer -= rawDt;
+    const b = cinematicBoss;
+    if (b) {
+      const p = THREE.MathUtils.clamp(1 - cinematicTimer / 2.8, 0, 1);
+      const angle = -1.15 + p * 1.9;
+      const radius = 8.2 - p * 2.2;
+      camera.position.set(b.root.position.x + Math.sin(angle) * radius, b.root.position.y + 2.2 + p * 1.1, b.root.position.z + Math.cos(angle) * radius);
+      camera.lookAt(b.root.position.x, b.root.position.y + 1.5, b.root.position.z);
+    }
+    if (cinematicTimer <= 0) {
+      bossIntro.classList.add('hidden');
+      lockTarget = cinematicBoss;
+      cinematicBoss = null;
+    }
+    composer.render(rawDt);
+    return;
+  }
   const dt = vfx.update(rawDt);
   if (comboTimer > 0) {
     comboTimer -= dt;
@@ -667,9 +723,14 @@ requestAnimationFrame(animate);
         if (e.root.position.distanceTo(strikeCenter) <= reach + e.spec.scale * 0.45) {
           landed = true;
           const baseDmg = Math.round(
-            (hero.isHeavySlam ? 85 + heavySlamBeans * 58 : 34 + hero.comboStep * 9) * (1 + damageBonus) * (1 + Math.min(comboCount, 20) * 0.015)
+            (hero.isHeavySlam ? 85 + heavySlamBeans * 58 : 34 + hero.comboStep * 9) * (1 + damageBonus) * (1 + Math.min(comboCount, 20) * 0.015) * (e.brokenTimer > 0 ? 2.2 : 1)
           );
           const enteredP2 = enemies.applyDamage(e, baseDmg, fwd);
+          const broke = enemies.addPosture(e, hero.isHeavySlam ? 36 : 15);
+          if (broke) {
+            showToast(`${e.spec.name} · 破防！按 F 处决`);
+            vfx.spawnShockwave(e.root.position, 5.5, 0x6fe3d6);
+          }
           vfx.triggerHitJuice(
             e.root.position.clone().add(new THREE.Vector3(0, 1.4, 0)),
             baseDmg,
@@ -753,6 +814,16 @@ requestAnimationFrame(animate);
       hero.root.position,
       (x, z) => world.getTerrainHeight(x, z),
       (hitEv) => {
+        if (hero.parryTimer > 0) {
+          hero.parryTimer = 0;
+          const broke = enemies.addPosture(hitEv.enemy, 70);
+          hero.focusPoints = Math.min(300, hero.focusPoints + 90);
+          vfx.triggerPerfectDodgeSlowMo();
+          vfx.spawnShockwave(hero.root.position, 4.5, 0x6fe3d6);
+          audio.playPerfectDodge();
+          showToast(broke ? '棍花弹反 · 破防！' : '棍花弹反 · 躯干受损！');
+          return;
+        }
         if (hero.invulnTimer > 0) {
           // Invulnerable mid-dodge -> reward Perfect Dodge!
           hero.focusPoints = Math.min(300, hero.focusPoints + 85);
@@ -789,14 +860,14 @@ requestAnimationFrame(animate);
       audio.playVictory();
       speak('victory');
       setTimeout(() => {
-        const isFinal = currentChapter >= WUKONG_CHAPTERS.length - 1;
+        const isFinal = true;
         const rootLines = [
           '他倒下时，胸口有一根金色的刺——那是你的“怒”。',
           '火里有一根“嗔”。它一直在烧，连你也不放过。',
           '他叫了你一声“贤弟”。你想起自己也曾被压在山下。',
         ];
         openChoice(
-          `${WUKONG_CHAPTERS[currentChapter].code} · 六根之一`,
+          `${ACTIVE_CHAPTERS[currentChapter].code} · 六根之一`,
           isFinal ? '最后一根，怎么用？' : '这一根，怎么用？',
           `${rootLines[currentChapter] ?? rootLines[0]}\n超度：回血、降低业障；吞噬：永久增伤、抬高业障。`,
           '超度 · 放下',
@@ -864,7 +935,9 @@ requestAnimationFrame(animate);
     bossNameEl.textContent = boss.spec.name;
     bossTitleEl.textContent = boss.spec.title ?? '';
     bossPhaseTag.classList.toggle('hidden', !boss.phase2);
+    bossPhaseTag.textContent = boss.phase3 ? '濒死 · 燃命三阶段' : '法天象地 · 狂暴二阶段';
     bossBarFill.style.width = `${(boss.hp / boss.maxHp) * 100}%`;
+    bossPostureFill.style.width = `${(boss.posture / boss.maxPosture) * 100}%`;
   } else {
     bossHud.classList.add('hidden');
   }

@@ -42,6 +42,8 @@ export class WukongController {
 
   public dodgeTimer = 0;
   public invulnTimer = 0;
+  public parryTimer = 0;
+  public parryCooldown = 0;
 
   // Spell Cooldowns
   public cdDing = 0;
@@ -155,7 +157,7 @@ export class WukongController {
         // Reparent the procedural Jingu Bang from the back to the right hand bone.
         let handBone: THREE.Object3D | null = null;
         m.traverse((o) => {
-          if (!handBone && /mixamorig:righthand$/i.test(o.name)) handBone = o;
+          if (!handBone && /mixamorig:?righthand$/i.test(o.name)) handBone = o;
         });
         const hb = handBone as THREE.Object3D | null;
         if (hb) {
@@ -216,6 +218,16 @@ export class WukongController {
       this.actions[this.activeActionIdx].fadeOut(0.14);
     }
     this.activeActionIdx = safeIdx;
+  }
+
+  public startParry(): boolean {
+    if (this.parryCooldown > 0 || this.dodgeTimer > 0 || this.attackTimer > 0.2) return false;
+    this.parryTimer = 0.34;
+    this.parryCooldown = 0.7;
+    (this.slashArc.material as THREE.MeshBasicMaterial).color.setHex(0x6fe3d6);
+    (this.slashArc.material as THREE.MeshBasicMaterial).opacity = 0.55;
+    this.slashArc.rotation.z = -Math.PI * 0.2;
+    return true;
   }
 
   public startLightAttack(): boolean {
@@ -392,6 +404,8 @@ export class WukongController {
       this.playClipIndex(0); // Sword_Idle
     }
 
+    this.parryTimer = Math.max(0, this.parryTimer - dt);
+    this.parryCooldown = Math.max(0, this.parryCooldown - dt);
     if (this.attackTimer > 0) {
       this.attackTimer -= dt;
       const swingProg = 1 - Math.max(0, this.attackTimer) / (this.isHeavySlam ? 0.62 : 0.36);

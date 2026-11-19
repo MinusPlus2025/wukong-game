@@ -29,6 +29,7 @@ export class WukongAudio {
   private bossRoar!: Tone.MonoSynth;
   private voices: Record<string, Tone.Player> = {};
   private bgmPlayer: Tone.Player | null = null;
+  private sfxPlayers: Record<string, Tone.Player> = {};
 
   private recordDest: MediaStreamAudioDestinationNode | null = null;
   private step = 0;
@@ -178,6 +179,20 @@ export class WukongAudio {
     for (const [k, url] of Object.entries(voiceMap)) {
       this.voices[k] = new Tone.Player({ url, volume: 5 }).connect(this.master);
     }
+    const sfxMap: Record<string, string> = {
+      whoosh_light: 'audio/sfx/whoosh_light.wav',
+      whoosh_heavy: 'audio/sfx/whoosh_heavy.wav',
+      impact: 'audio/sfx/impact.wav',
+      impact_heavy: 'audio/sfx/impact_heavy.wav',
+      slam: 'audio/sfx/slam.wav',
+      parry: 'audio/sfx/parry.wav',
+      gong: 'audio/sfx/gong.wav',
+      taiko: 'audio/sfx/taiko.wav',
+    };
+    for (const [k, url] of Object.entries(sfxMap)) {
+      this.sfxPlayers[k] = new Tone.Player({ url, volume: -5 }).connect(this.master);
+    }
+
     // Real recorded Eastern drum score (CC BY 4.0, Kevin MacLeod).
     this.bgmPlayer = new Tone.Player({
       url: 'audio/bgm/battle.mp3',
@@ -247,12 +262,22 @@ export class WukongAudio {
     return this.recordDest?.stream ?? null;
   }
 
+  private playSfx(name: string, volume = -5): void {
+    if (this.muted) return;
+    const p = this.sfxPlayers[name];
+    if (!p || !p.loaded) return;
+    try { p.stop(); } catch { /* not started */ }
+    p.volume.value = volume;
+    p.start(Tone.now());
+  }
+
   public playLightSwing(comboIdx: number): void {
     if (!this.isReady || this.muted) return;
     // Realistic heavy staff cutting air (pitch-swept pink noise whoosh)
     const freqs = [340, 420, 510];
     this.whooshFilter.frequency.setValueAtTime(freqs[comboIdx % 3], Tone.now());
     this.whooshFilter.frequency.exponentialRampToValueAtTime(160, Tone.now() + 0.15);
+    this.playSfx(comboIdx >= 2 ? 'whoosh_heavy' : 'whoosh_light', -7);
     this.whooshNoise.triggerAttackRelease('16n');
     const notes = ['D6', 'F#6', 'A6'];
     this.staffMetal.triggerAttackRelease(notes[comboIdx % 3], '32n', undefined, 0.28);
@@ -262,6 +287,7 @@ export class WukongAudio {
     if (!this.isReady || this.muted) return;
     // Deep satisfying physical impact thud + warm jade/gold overtone
     this.tangguDrum.triggerAttackRelease(heavy ? 'C1' : 'F#1', '8n', undefined, heavy ? 0.92 : 0.58);
+    this.playSfx(heavy ? 'impact_heavy' : 'impact', heavy ? -3 : -6);
     this.impactNoise.triggerAttackRelease(heavy ? '4n' : '16n', undefined, heavy ? 0.9 : 0.45);
     if (heavy) {
       this.chimeHarmonic.triggerAttackRelease(['D4', 'A4', 'D5'], '2n', undefined, 0.45);
@@ -273,6 +299,7 @@ export class WukongAudio {
   public playDingShenSpell(): void {
     if (!this.isReady || this.muted) return;
     // Sacred golden singing bowl chord ("定!")
+    this.playSfx('gong', -8);
     this.chimeHarmonic.triggerAttackRelease(['D5', 'A5', 'F#6'], '1n', undefined, 0.62);
     this.tangguDrum.triggerAttackRelease('D1', '4n', undefined, 0.55);
   }
@@ -290,17 +317,20 @@ export class WukongAudio {
     if (!this.isReady || this.muted) return;
     this.whooshFilter.frequency.setValueAtTime(680, Tone.now());
     this.whooshFilter.frequency.exponentialRampToValueAtTime(140, Tone.now() + 0.55);
+    this.playSfx('whoosh_heavy', -6);
     this.whooshNoise.triggerAttackRelease('2n');
     this.chimeHarmonic.triggerAttackRelease(['E4', 'B4', 'F#5'], '2n', undefined, 0.42);
   }
 
   public playPerfectDodge(): void {
     if (!this.isReady || this.muted) return;
+    this.playSfx('parry', -3);
     this.chimeHarmonic.triggerAttackRelease(['A4', 'E5', 'A5'], '2n', undefined, 0.52);
   }
 
   public playVictory(): void {
     if (!this.isReady || this.muted) return;
+    this.playSfx('gong', -4);
     this.tangguDrum.triggerAttackRelease('D1', '1n', undefined, 0.8);
     ['D4', 'E4', 'F#4', 'A4', 'B4', 'D5'].forEach((n, i) => {
       setTimeout(() => {
@@ -311,6 +341,7 @@ export class WukongAudio {
 
   public playDodge(): void {
     if (!this.isReady || this.muted) return;
+    this.playSfx('whoosh_light', -8);
     this.whooshFilter.frequency.setValueAtTime(980, Tone.now());
     this.whooshFilter.frequency.exponentialRampToValueAtTime(220, Tone.now() + 0.22);
     this.whooshNoise.triggerAttackRelease('32n');
@@ -318,6 +349,7 @@ export class WukongAudio {
 
   public playBossRoar(): void {
     if (!this.isReady || this.muted) return;
+    this.playSfx('slam', -5);
     this.bossRoar.triggerAttackRelease('C2', '2n', undefined, 0.8);
     this.tangguDrum.triggerAttackRelease('C1', '2n', undefined, 0.9);
     this.impactNoise.triggerAttackRelease('2n', undefined, 0.7);
