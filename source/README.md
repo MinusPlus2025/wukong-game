@@ -26,6 +26,9 @@ npm run dev -- --port 5181
 - 右键 / K：蓄力重劈（消耗棍势）
 - Shift：幻影闪身；红光窗口内触发完美闪身/子弹时间
 - Q / Tab / 中键：锁定 / 解除锁定
+- F：弹反 / 破防后处决
+- E：横扫千军
+- G：南天门天钟镇妖
 - 1 定身、2 身外身、3 芭蕉扇、4 筋斗云
 - R 饮酒、Space 腾跃、Esc 暂停、M 静音
 
@@ -35,6 +38,9 @@ npm run dev -- --port 5181
 - 战斗：轻棍三连、重劈、完美闪身、四神通、Boss 二阶段
 - 打击反馈：hitstop、镜头震动、敌人受击硬直、小怪打断前摇、连击计数/增伤、玩家受击红闪
 - 叙事：三回三 Boss、六根掉落、超度/吞噬、业障、两个结局
+- 探索：每回 3 个隐藏灵蕴（共 9 个）、碎片叙事、永久强化
+- 重玩：S/A/B 章节评价、Boss 检查点、NG+
+- 回目差异：花果山识破、火焰山火墙/扇灭、南天门天钟镇妖
 - 场景：Aholo SpatialGen 3DGS 花果山、石道祭坛、Aholo 写实苔石/石灯/石狮/竹丛/山门/桃枝
 - 音频：Tone.js 总线；Edge Neural 中文男声 14 句；真实东方鼓乐 BGM；金属棍风/重击/锣鼓/咆哮
 - UX：章节加载过场、低帧自适应降载、暂停菜单、声音开关、字幕
@@ -52,7 +58,7 @@ npm run dev -- --port 5181
 ## 音频署名
 
 - Music: “Asian Drums” — Kevin MacLeod (incompetech.com), CC BY 4.0.
-- Voice: Edge Neural TTS (`zh-CN-YunjianNeural`), post-processed with EQ/compression/reverb.
+- Voice: ChatTTS (open-source) deep male speaker, SoX EQ/compression/reverb.
 - SFX: procedural Tone.js layers.
 
 ## 说明

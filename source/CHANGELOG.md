@@ -9,3 +9,9 @@
 - EVA-like HUD skin (angular panels, amber/red signal, scanlines).
 - Aholo realistic props integrated: moss rock, stone lantern, guardian statue, bamboo, mountain gate, peach branch.
 - Audio: Edge Neural 14-line voice, real Eastern drum score, BGM ducking, voice subtitles.
+
+## 2026-11-19 — exploration/replay
+- 9 hidden spirits, lore and permanent upgrades.
+- S/A/B chapter ranks, boss checkpoint, NG+.
+- F parry/execution, E spin, G celestial bell.
+- Real Aholo props for all three chapters; animated bull minions.
