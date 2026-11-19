@@ -10,8 +10,8 @@
       href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@500;700;900&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-CdxeQIY5.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-COWmL-34.css">
+    <script type="module" crossorigin src="./assets/index-BmPKpA0Y.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BSrAt9-P.css">
   </head>
   <body>
     <canvas id="game-canvas"></canvas>
@@ -60,7 +60,7 @@
         <div class="hud-tools">
           <button id="btn-tech" class="tool-btn" title="查看群核 Aholo 3D AI 资产溯源">Aholo 溯源</button>
           <button id="btn-record" class="tool-btn">录制 15s 实机</button>
-          <button id="btn-mute" class="tool-btn">战鼓：开</button>
+          <button id="btn-mute" class="tool-btn">声音：开</button>
         </div>
       </header>
 
@@ -85,6 +85,12 @@
 
       <!-- Center Combat Callout Toast (Perfect Dodge / Ding-Shen / Fire Extinguished) -->
       <div id="combat-toast" class="combat-toast"></div>
+
+      <div id="root-hud" class="root-hud">
+        <span class="root-label">六根 <b id="roots-count">0</b><em>/6</em></span>
+        <div class="karma-track"><i id="karma-fill"></i></div>
+        <span class="karma-label" id="karma-label">业障 0</span>
+      </div>
 
       <!-- Bottom HUD: Player Vitals & Focus Beans (Left) + 4 Spells & Stances (Right) -->
       <footer class="hud-bottom">
@@ -172,7 +178,10 @@
         <div id="modal-tag" class="modal-tag">妖阵已破</div>
         <h2 id="modal-title" class="modal-title">第一回 · 功德圆满</h2>
         <p id="modal-desc" class="modal-desc"></p>
-        <button id="btn-modal-action" class="btn-gold-seal">前往下一回</button>
+        <div class="modal-actions">
+          <button id="btn-modal-action" class="btn-gold-seal">前往下一回</button>
+          <button id="btn-modal-alt" class="btn-gold-seal alt hidden">吞噬 · 收下</button>
+        </div>
       </div>
     </div>
 
