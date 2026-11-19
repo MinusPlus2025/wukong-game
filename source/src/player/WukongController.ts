@@ -157,9 +157,19 @@ export class WukongController {
         m.traverse((o) => {
           if (!handBone && /mixamorig:righthand$/i.test(o.name)) handBone = o;
         });
-        // Keep the staff at the right-hand socket; the retargeted hand bone local axes
-        // are not stable across clips, so the socket is body-local.
-        void handBone;
+        const hb = handBone as THREE.Object3D | null;
+        if (hb) {
+          this.handBone = hb;
+          this.root.add(this.staffPivot);
+          this.staffPivot.position.set(0, 0, 0);
+          this.staffPivot.rotation.set(0, 0, 0);
+          this.staffPivot.scale.setScalar(0.9);
+          const sg = this.staffPivot.children[0] as THREE.Group;
+          if (sg) sg.rotation.set(0, 0, 0);
+          this.handAttached = true;
+        } else {
+          this.staffPivot.position.set(0.46, 1.02, -0.36);
+        }
 
         if (gltf.animations && gltf.animations.length > 0) {
           this.mixer = new THREE.AnimationMixer(m);
@@ -364,6 +374,13 @@ export class WukongController {
       }
     }
 
+    if (this.handBone) {
+      const hp = new THREE.Vector3();
+      this.handBone.getWorldPosition(hp);
+      this.root.worldToLocal(hp);
+      this.staffPivot.position.copy(hp);
+    }
+
     // Combat swing animation & giant Ruyi Jingu Bang scaling + Aholo Retargeted Skeletal Clips
     if (this.dodgeTimer > 0) {
       this.playClipIndex(2); // Roll
@@ -384,7 +401,7 @@ export class WukongController {
         if (!this.handAttached) this.staffPivot.rotation.x = -1.6 + swingProg * 3.1;
       } else {
         this.staffMesh.scale.set(1, 1, 1);
-        this.staffPivot.rotation.y = -1.8 + swingProg * 3.6 * (this.comboStep % 2 === 0 ? -1 : 1);
+        this.staffPivot.rotation.set(0, (swingProg - 0.5) * 0.7, 0.1);
       }
       (this.slashArc.material as THREE.MeshBasicMaterial).opacity *= 0.88;
     } else {

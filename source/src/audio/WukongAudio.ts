@@ -176,13 +176,13 @@ export class WukongAudio {
       'low-hp': 'audio/voice/low-hp.wav',
     };
     for (const [k, url] of Object.entries(voiceMap)) {
-      this.voices[k] = new Tone.Player({ url, volume: 2 }).connect(this.master);
+      this.voices[k] = new Tone.Player({ url, volume: 5 }).connect(this.master);
     }
     // Real recorded Eastern drum score (CC BY 4.0, Kevin MacLeod).
     this.bgmPlayer = new Tone.Player({
       url: 'audio/bgm/battle.mp3',
       loop: true,
-      volume: -11,
+      volume: -13,
       fadeIn: 2.5,
       fadeOut: 1.2,
     }).connect(this.master);
@@ -329,6 +329,10 @@ export class WukongAudio {
     if (!p || !p.loaded) return;
     try { p.stop(); } catch { /* not started */ }
     p.start(Tone.now());
+    if (this.bgmPlayer) {
+      this.bgmPlayer.volume.rampTo(-19, 0.12);
+      window.setTimeout(() => this.bgmPlayer?.volume.rampTo(-13, 0.6), 1800);
+    }
   }
 
   public setBossPhase(on: boolean): void {

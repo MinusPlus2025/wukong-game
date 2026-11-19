@@ -1,0 +1,213 @@
+[
+  {
+    "id": "moss-rock",
+    "prompt": "Large weathered granite boulder covered with thick green moss, wet stone, photorealistic PBR game environment asset, isolated on neutral background",
+    "taskId": "8440876",
+    "style": "photorealistic",
+    "localGlbUrl": "/models/live/lux3d_8440876.glb",
+    "file": "/models/live/moss-rock.glb",
+    "created": "2026-11-19T11:04:27.695Z"
+  },
+  {
+    "id": "stone-lantern",
+    "prompt": "Ancient Chinese carved stone lantern, moss, warm candle glow, photorealistic PBR game prop, isolated on neutral background",
+    "taskId": "8440884",
+    "style": "photorealistic",
+    "localGlbUrl": "/models/live/lux3d_8440884.glb",
+    "file": "/models/live/stone-lantern.glb",
+    "created": "2026-11-19T11:05:33.291Z"
+  },
+  {
+    "id": "bamboo-cluster",
+    "prompt": "Dense cluster of tall green bamboo stalks with leaves, photorealistic PBR game environment asset, isolated on neutral background",
+    "taskId": "8440880",
+    "style": "photorealistic",
+    "localGlbUrl": "/models/live/lux3d_8440880.glb",
+    "file": "/models/live/bamboo-cluster.glb",
+    "created": "2026-11-19T11:06:23.595Z"
+  },
+  {
+    "id": "mountain-gate",
+    "prompt": "Ancient Chinese mountain temple gate, weathered wood and stone, red banners, photorealistic PBR game environment asset, isolated on neutral background",
+    "taskId": "8440888",
+    "style": "photorealistic",
+    "localGlbUrl": "/models/live/lux3d_8440888.glb",
+    "file": "/models/live/mountain-gate.glb",
+    "created": "2026-11-19T11:06:41.520Z"
+  },
+  {
+    "id": "stone-shrine",
+    "prompt": "Ancient Chinese stone shrine lantern, carved roof, moss, warm glow, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8441623",
+    "localGlbUrl": "/models/live/lux3d_8441623.glb",
+    "file": "/models/live/stone-shrine.glb",
+    "created": "2026-11-19T11:11:13.952Z"
+  },
+  {
+    "id": "wooden-bridge",
+    "prompt": "Weathered wooden bridge over a stream, Chinese mountain village, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8441747",
+    "localGlbUrl": "/models/live/lux3d_8441747.glb",
+    "file": "/models/live/wooden-bridge.glb",
+    "created": "2026-11-19T11:11:46.695Z"
+  },
+  {
+    "id": "stone-pagoda",
+    "prompt": "Small ancient Chinese stone pagoda, carved tiers, moss, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8441870",
+    "localGlbUrl": "/models/live/lux3d_8441870.glb",
+    "file": "/models/live/stone-pagoda.glb",
+    "created": "2026-11-19T11:12:07.619Z"
+  },
+  {
+    "id": "bronze-censer",
+    "prompt": "Ancient Chinese bronze incense burner, dragon relief, patina, photorealistic PBR game prop, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8441902",
+    "localGlbUrl": "/models/live/lux3d_8441902.glb",
+    "file": "/models/live/bronze-censer.glb",
+    "created": "2026-11-19T11:12:24.155Z"
+  },
+  {
+    "id": "war-drum",
+    "prompt": "Large ancient Chinese war drum on wooden stand, red lacquer, photorealistic PBR game prop, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8442470",
+    "localGlbUrl": "/models/live/lux3d_8442470.glb",
+    "file": "/models/live/war-drum.glb",
+    "created": "2026-11-19T11:16:30.915Z"
+  },
+  {
+    "id": "red-banner",
+    "prompt": "Weathered red Chinese war banner on bamboo pole, tattered fabric, photorealistic PBR game prop, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8442596",
+    "localGlbUrl": "/models/live/lux3d_8442596.glb",
+    "file": "/models/live/red-banner.glb",
+    "created": "2026-11-19T11:17:18.380Z"
+  },
+  {
+    "id": "guardian-statue",
+    "prompt": "Ancient Chinese stone guardian lion statue, moss, weathered, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8442701",
+    "localGlbUrl": "/models/live/lux3d_8442701.glb",
+    "file": "/models/live/guardian-statue.glb",
+    "created": "2026-11-19T11:17:35.621Z"
+  },
+  {
+    "id": "cliff-rock",
+    "prompt": "Jagged mossy granite cliff rock formation, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8442767",
+    "localGlbUrl": "/models/live/lux3d_8442767.glb",
+    "file": "/models/live/cliff-rock.glb",
+    "created": "2026-11-19T11:18:54.597Z"
+  },
+  {
+    "id": "bamboo-shoot",
+    "prompt": "Young bamboo shoots and small bamboo cluster, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8443341",
+    "localGlbUrl": "/models/live/lux3d_8443341.glb",
+    "file": "/models/live/bamboo-shoot.glb",
+    "created": "2026-11-19T11:22:46.761Z"
+  },
+  {
+    "id": "peach-branch",
+    "prompt": "Ancient gnarled peach blossom branch with pink flowers, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8442823",
+    "localGlbUrl": "/models/live/lux3d_8442823.glb",
+    "file": "/models/live/peach-branch.glb",
+    "created": "2026-11-19T11:24:51.480Z"
+  },
+  {
+    "id": "moss-patch",
+    "prompt": "Lush green moss ground patch with small ferns, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8443529",
+    "localGlbUrl": "/models/live/lux3d_8443529.glb",
+    "file": "/models/live/moss-patch.glb",
+    "created": "2026-11-19T11:28:02.800Z"
+  },
+  {
+    "id": "stone-steps",
+    "prompt": "Ancient weathered stone steps, moss between cracks, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8443569",
+    "localGlbUrl": "/models/live/lux3d_8443569.glb",
+    "file": "/models/live/stone-steps.glb",
+    "created": "2026-11-19T11:28:34.849Z"
+  },
+  {
+    "id": "incense-burner",
+    "prompt": "Tall bronze temple incense burner with smoke, ancient Chinese, photorealistic PBR game prop, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8443742",
+    "localGlbUrl": "/models/live/lux3d_8443742.glb",
+    "file": "/models/live/incense-burner.glb",
+    "created": "2026-11-19T11:28:36.685Z"
+  },
+  {
+    "id": "hanging-lantern",
+    "prompt": "Red Chinese hanging paper lantern, weathered, warm glow, photorealistic PBR game prop, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8444697",
+    "localGlbUrl": "/models/live/lux3d_8444697.glb",
+    "file": "/models/live/hanging-lantern.glb",
+    "created": "2026-11-19T11:31:42.786Z"
+  },
+  {
+    "id": "moon-gate",
+    "prompt": "Chinese garden moon gate in a weathered stone wall, moss, photorealistic PBR game environment asset, isolated on neutral background",
+    "style": "photorealistic",
+    "taskId": "8444379",
+    "localGlbUrl": "/models/live/lux3d_8444379.glb",
+    "file": "/models/live/moon-gate.glb",
+    "created": "2026-11-19T11:32:00.986Z"
+  },
+  {
+    "id": "peach-tree-forest",
+    "prompt": "Ancient Chinese immortal peach tree forest, gnarled trunks, pink blossoms, moss, photorealistic PBR game environment asset, isolated on neutral background",
+    "taskId": "8452043",
+    "localGlbUrl": "/models/live/lux3d_8452043.glb",
+    "file": "/models/live/peach-tree-forest.glb",
+    "created": "2026-11-19T12:24:31.460Z"
+  },
+  {
+    "id": "waterfall-cliff",
+    "prompt": "Tall mossy cliff with a cascading waterfall, Chinese mountain, photorealistic PBR game environment asset, isolated on neutral background",
+    "taskId": "8452044",
+    "localGlbUrl": "/models/live/lux3d_8452044.glb",
+    "file": "/models/live/waterfall-cliff.glb",
+    "created": "2026-11-19T12:24:33.047Z"
+  },
+  {
+    "id": "cloud-sea",
+    "prompt": "Sea of clouds around mountain peaks, Chinese immortal realm, photorealistic PBR game environment asset, isolated on neutral background",
+    "taskId": "8452045",
+    "localGlbUrl": "/models/live/lux3d_8452045.glb",
+    "file": "/models/live/cloud-sea.glb",
+    "created": "2026-11-19T12:24:35.076Z"
+  },
+  {
+    "id": "temple-ruin",
+    "prompt": "Ruined Chinese mountain temple, broken pillars, moss, photorealistic PBR game environment asset, isolated on neutral background",
+    "taskId": "8452063",
+    "localGlbUrl": "/models/live/lux3d_8452063.glb",
+    "file": "/models/live/temple-ruin.glb",
+    "created": "2026-11-19T12:26:12.169Z"
+  },
+  {
+    "id": "stone-arch",
+    "prompt": "Ancient Chinese stone arch gate, carved runes, moss, photorealistic PBR game environment asset, isolated on neutral background",
+    "taskId": "8452058",
+    "localGlbUrl": "/models/live/lux3d_8452058.glb",
+    "file": "/models/live/stone-arch.glb",
+    "created": "2026-11-19T12:27:13.575Z"
+  }
+]

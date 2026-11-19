@@ -224,7 +224,7 @@ async function startChapter(idx: number): Promise<void> {
   // Give the player one beat to land before clear can trigger.
   window.setTimeout(() => { chapterReady = true; chapterLoading.classList.add('hidden'); }, 900);
   const bossName = cfg.enemies.find((e) => e.isBoss)?.name ?? '';
-  window.setTimeout(() => { showStory(`${cfg.code} · ${cfg.title}　|　妖王：${bossName}`, 3800); audio.playVoice('boss-intro'); }, 1300);
+  window.setTimeout(() => { showStory(`${cfg.code} · ${cfg.title}　|　妖王：${bossName}`, 3800); speak('boss-intro'); }, 1300);
   window.setTimeout(() => { audio.playBossRoar(); }, 1200);
 }
 
@@ -238,7 +238,7 @@ function performLightAttack(): void {
     const now = performance.now();
     if (now - lastComboVoice > 2400) {
       lastComboVoice = now;
-      audio.playVoice('combo');
+      speak('combo');
     }
   }
 }
@@ -251,7 +251,7 @@ function performHeavySlam(): void {
     heavySlamBeans = beans;
     audio.playLightSwing(2);
     if (beans >= 2) showToast(`棍势爆发 · ${beans}豆擎天重劈！`);
-    audio.playVoice('heavy');
+    speak('heavy');
   }
 }
 
@@ -261,7 +261,7 @@ function performDodge(): void {
   if (hero.triggerDodge()) {
     audio.playDodge();
     if (imminent) {
-      audio.playVoice('dodge');
+      speak('dodge');
       // Perfect Dodge ("幻影身法") -> Bullet-time + +100 Focus Bean!
       hero.focusPoints = Math.min(300, hero.focusPoints + 100);
       vfx.triggerPerfectDodgeSlowMo();
@@ -279,7 +279,7 @@ function castSpell(slot: number): void {
     hero.cdDing = 9.0;
     const count = enemies.castDingShen(hero.root.position, 15);
     audio.playDingShenSpell();
-    audio.playVoice('ding');
+    speak('ding');
     vfx.spawnShockwave(hero.root.position, 9.5, 0xffdf73);
     showToast(count > 0 ? `「定！」定住 ${count} 名妖邪！` : '定身真言 · 金光护体');
   } else if (slot === 2) {
@@ -296,7 +296,7 @@ function castSpell(slot: number): void {
     const hitCount = enemies.castPlantainHurricane(hero.root.position, fwd);
     const putOutFire = world.extinguishFireWall();
     audio.playWindFan();
-    audio.playVoice('fan');
+    speak('fan');
     vfx.spawnShockwave(hero.root.position, 13.5, 0x5effc5);
     if (putOutFire) {
       hudObjective.textContent = '三昧真火已熄！直捣火焰山深处击败「赤炎魔将」！';
@@ -391,7 +391,7 @@ document.getElementById('btn-start-game')!.addEventListener('click', async () =>
   damageBonus = 0;
   updateRootHud();
   // Start gameplay immediately; audio (reverb + voice preload) initializes in parallel.
-  void audio.init().then(() => audio.playVoice('start'));
+  void audio.init().then(() => speak('start'));
   await startChapter(0);
 });
 
@@ -472,6 +472,29 @@ window.addEventListener('resize', () => {
 
 // Modal handler
 let storyTimer = 0;
+const VOICE_TEXT: Record<string, string> = {
+  start: '俺老孙来也。',
+  combo: '吃俺一棒！',
+  heavy: '碎！',
+  dodge: '闪。',
+  ding: '定！',
+  fan: '风来！',
+  phase: '法天象地！',
+  victory: '妖怪，哪里逃！',
+  death: '俺老孙……去也……',
+  choice: '这一根，你拿得动吗？',
+  'ending-good': '金箍落下，你渡了自己。',
+  'ending-bad': '你成了新的妖王。',
+  'boss-intro': '妖王，受死！',
+  'low-hp': '俺老孙，还撑得住……',
+};
+
+function speak(name: string): void {
+  audio.playVoice(name);
+  const text = VOICE_TEXT[name];
+  if (text) showStory(text, 2200);
+}
+
 function showStory(text: string, ms = 4200): void {
   storySub.textContent = text;
   storySub.classList.remove('hidden');
@@ -524,7 +547,7 @@ function openChoice(
   btnModalAlt.textContent = altLabel;
   btnModalAlt.classList.remove('hidden');
   btnModalAlt.onclick = altAction;
-  audio.playVoice('choice');
+  speak('choice');
   modalOverlay.classList.remove('hidden');
 }
 
@@ -562,7 +585,7 @@ function resolveRoot(kind: 'mercy' | 'devour', isFinal: boolean): void {
 
 function showEnding(): void {
   if (karma < 40) {
-    audio.playVoice('ending-good');
+    speak('ending-good');
     openModal(
       '齐天大圣 · 金箍落下',
       '你渡了自己',
@@ -571,7 +594,7 @@ function showEnding(): void {
       () => { roots = 0; karma = 0; damageBonus = 0; updateRootHud(); startChapter(0); }
     );
   } else {
-    audio.playVoice('ending-bad');
+    speak('ending-bad');
     openModal(
       '齐天大圣 · 新的妖王',
       '你成了自己打的那只妖',
@@ -661,7 +684,7 @@ requestAnimationFrame(animate);
             document.body.classList.add('eva-alert');
             audio.setBossPhase(true);
             audio.playBossRoar();
-            audio.playVoice('phase');
+            speak('phase');
             showToast(`${e.spec.name} · 法天象地狂暴二阶段！`);
           }
         }
@@ -747,7 +770,7 @@ requestAnimationFrame(animate);
           vfx.spawnShockwave(hitEv.pos, 7.5, 0xff4422);
         }
         if (hero.hp <= 0) {
-          audio.playVoice('death');
+          speak('death');
           openModal(
             '胜败乃兵家常事',
             '灵台蒙尘 · 重整金甲',
@@ -764,7 +787,7 @@ requestAnimationFrame(animate);
     if (chapterReady && !chapterClearedTriggered && enemies.getAliveEnemies().length === 0) {
       chapterClearedTriggered = true;
       audio.playVictory();
-      audio.playVoice('victory');
+      speak('victory');
       setTimeout(() => {
         const isFinal = currentChapter >= WUKONG_CHAPTERS.length - 1;
         const rootLines = [
@@ -851,7 +874,7 @@ requestAnimationFrame(animate);
   lowHp.style.opacity = hpRatio < 0.3 ? String(Math.min(1, (0.3 - hpRatio) * 2.6)) : '0';
   if (hpRatio < 0.3 && !lowHpPlayed) {
     lowHpPlayed = true;
-    audio.playVoice('low-hp');
+    speak('low-hp');
     showStory('残血 · 按 R 饮葫芦，或 Shift 闪身找机会', 2600);
   }
   composer.render(rawDt);
