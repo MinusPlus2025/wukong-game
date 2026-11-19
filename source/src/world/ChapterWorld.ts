@@ -61,6 +61,7 @@ export class ChapterWorld {
     // 4. Chapter-specific interactive biome setpieces
     if (config.index === 0) {
       this.buildHuaguoshanBiome();
+      void this.loadHuaguoshanProps(loader);
     } else if (config.index === 1) {
       this.buildFlamingMountainBiome(Boolean(config.hasFireBarrier), loader);
     } else {
@@ -244,7 +245,7 @@ export class ChapterWorld {
     // Instanced grass tufts outside the arena: cheap, one draw call.
     if (config.index === 0) {
       const bladeGeo = new THREE.ConeGeometry(0.035, 0.5, 4);
-      const bladeMat = new THREE.MeshStandardMaterial({ color: 0x2f5a36, roughness: 0.95, metalness: 0 });
+      const bladeMat = new THREE.MeshStandardMaterial({ color: 0x244238, roughness: 0.95, metalness: 0 });
       const grass = new THREE.InstancedMesh(bladeGeo, bladeMat, 1800);
       const dummy = new THREE.Object3D();
       for (let i = 0; i < 1800; i++) {
@@ -274,6 +275,42 @@ export class ChapterWorld {
       this.worldGroup.add(splat);
     } catch {
       // Splat vista optional if still streaming
+    }
+  }
+
+  private async loadHuaguoshanProps(loader: GLTFLoader): Promise<void> {
+    const defs: Array<{ file: string; x: number; z: number; h: number }> = [
+      { file: 'moss-rock', x: -14, z: -3, h: 2.8 },
+      { file: 'moss-rock', x: 14, z: -5, h: 2.2 },
+      { file: 'stone-lantern', x: -5.5, z: 2, h: 3.0 },
+      { file: 'stone-lantern', x: 5.5, z: -2, h: 3.0 },
+      { file: 'guardian-statue', x: -8.5, z: -10.5, h: 3.4 },
+      { file: 'guardian-statue', x: 8.5, z: -10.5, h: 3.4 },
+      { file: 'bamboo-cluster', x: 20, z: -8, h: 5.2 },
+      { file: 'bamboo-cluster', x: -20, z: -10, h: 4.8 },
+      { file: 'peach-branch', x: 12, z: 4, h: 4.0 },
+      { file: 'peach-branch', x: -12, z: 5, h: 3.6 },
+      { file: 'mountain-gate', x: 0, z: -30, h: 9.5 },
+    ];
+    for (const d of defs) {
+      try {
+        const gltf = await loader.loadAsync(`models/live-opt/${d.file}.glb`);
+        if (this.currentChapterIdx !== 0) { gltf.scene.traverse((o) => { if ((o as THREE.Mesh).isMesh) ((o as THREE.Mesh).geometry as THREE.BufferGeometry).dispose(); }); return; }
+        const m = gltf.scene;
+        const box = new THREE.Box3().setFromObject(m);
+        const size = new THREE.Vector3(); const ctr = new THREE.Vector3();
+        box.getSize(size); box.getCenter(ctr);
+        const s = d.h / Math.max(0.01, size.y);
+        m.scale.setScalar(s);
+        const y = this.getTerrainHeight(d.x, d.z);
+        m.position.set(d.x - ctr.x * s, y - box.min.y * s, d.z - ctr.z * s);
+        m.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; }
+        });
+        this.worldGroup.add(m);
+      } catch {
+        // optional prop
+      }
     }
   }
 
@@ -445,7 +482,7 @@ export class ChapterWorld {
       dummy.scale.set(0.3 + Math.random() * 0.35, 0.25 + Math.random() * 0.35, 0.3 + Math.random() * 0.35);
     });
 
-    addInstanced(new THREE.SphereGeometry(0.055, 6, 6), new THREE.MeshStandardMaterial({ color: 0xe58aa8, emissive: 0x5a1a2c, emissiveIntensity: 0.35, roughness: 0.6 }), 340, () => {
+    addInstanced(new THREE.SphereGeometry(0.055, 6, 6), new THREE.MeshStandardMaterial({ color: 0x9a6a52, emissive: 0x2a100c, emissiveIntensity: 0.2, roughness: 0.7 }), 340, () => {
       const a = Math.random() * Math.PI * 2, r = 11.6 + Math.random() * 13;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       dummy.position.set(x, this.getTerrainHeight(x, z) + 0.18, z);
@@ -473,7 +510,7 @@ export class ChapterWorld {
       dummy.scale.set(0.55, 0.5 + Math.random() * 0.35, 0.55);
     });
 
-    addInstanced(new THREE.PlaneGeometry(0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0xff9fbd, transparent: true, opacity: 0.7, side: THREE.DoubleSide }), 260, () => {
+    addInstanced(new THREE.PlaneGeometry(0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0xb06a52, transparent: true, opacity: 0.62, side: THREE.DoubleSide }), 260, () => {
       const a = Math.random() * Math.PI * 2, r = 8 + Math.random() * 16;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       dummy.position.set(x, this.getTerrainHeight(x, z) + 0.04, z);

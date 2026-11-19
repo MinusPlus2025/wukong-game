@@ -19,6 +19,7 @@ export interface ActiveEnemy {
   windUpTimer: number;
   attackCooldown: number;
   hitFlashTimer: number;
+  staggerTimer: number;
   dead: boolean;
   deathTimer: number;
   mixer: THREE.AnimationMixer | null;
@@ -127,6 +128,7 @@ export class EnemyManager {
         windUpTimer: 0,
         attackCooldown: 1.4 + Math.random() * 0.8,
         hitFlashTimer: 0,
+        staggerTimer: 0,
         dead: false,
         deathTimer: 0,
         mixer: null,
@@ -230,6 +232,15 @@ export class EnemyManager {
     if (enemy.dead) return false;
     enemy.hp = Math.max(0, enemy.hp - dmg);
     enemy.hitFlashTimer = 0.16;
+    enemy.staggerTimer = Math.max(
+      enemy.staggerTimer,
+      enemy.spec.isBoss ? 0.07 : 0.18 + Math.min(0.28, dmg * 0.0018)
+    );
+    if (!enemy.spec.isBoss) {
+      enemy.windUpTimer = 0;
+      enemy.attackCooldown = Math.max(enemy.attackCooldown, 0.75);
+      (enemy.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
+    }
 
     if (knockbackDir && !enemy.spec.isBoss) {
       enemy.root.position.addScaledVector(knockbackDir, 0.85);
@@ -333,6 +344,15 @@ export class EnemyManager {
         continue;
       } else {
         (e.sealRing.material as THREE.MeshBasicMaterial).opacity = 0;
+      }
+
+      if (e.staggerTimer > 0) {
+        e.staggerTimer -= dt;
+        e.modelWrap.position.x = Math.sin(performance.now() * 0.09) * 0.045;
+        this.updateFloatingBar(e);
+        continue;
+      } else {
+        e.modelWrap.position.x = 0;
       }
 
       const toPlayer = new THREE.Vector3(

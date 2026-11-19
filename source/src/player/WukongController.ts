@@ -51,6 +51,8 @@ export class WukongController {
   public clones: CloneMinion[] = [];
   private afterimages: Array<{ mesh: THREE.Object3D; life: number }> = [];
   private mixer: THREE.AnimationMixer | null = null;
+  private handAttached = false;
+  private handBone: THREE.Object3D | null = null;
   private actions: THREE.AnimationAction[] = [];
   private activeActionIdx = -1;
 
@@ -83,8 +85,8 @@ export class WukongController {
 
     this.staffMesh = shaft;
     staffGroup.add(shaft);
-    staffGroup.rotation.z = Math.PI * 0.36;
-    this.staffPivot.position.set(0.35, 1.15, 0);
+    staffGroup.rotation.z = 0;
+    this.staffPivot.position.set(0.46, 1.02, -0.36);
     this.staffPivot.add(staffGroup);
     this.bodyWrap.add(this.staffPivot);
 
@@ -149,6 +151,15 @@ export class WukongController {
           }
         });
         this.bodyWrap.add(m);
+
+        // Reparent the procedural Jingu Bang from the back to the right hand bone.
+        let handBone: THREE.Object3D | null = null;
+        m.traverse((o) => {
+          if (!handBone && /mixamorig:righthand$/i.test(o.name)) handBone = o;
+        });
+        // Keep the staff at the right-hand socket; the retargeted hand bone local axes
+        // are not stable across clips, so the socket is body-local.
+        void handBone;
 
         if (gltf.animations && gltf.animations.length > 0) {
           this.mixer = new THREE.AnimationMixer(m);
@@ -370,7 +381,7 @@ export class WukongController {
       if (this.isHeavySlam) {
         // Giant 2.4x Golden Pillar Slam!
         this.staffMesh.scale.set(2.2, 2.3, 2.2);
-        this.staffPivot.rotation.x = -1.6 + swingProg * 3.1;
+        if (!this.handAttached) this.staffPivot.rotation.x = -1.6 + swingProg * 3.1;
       } else {
         this.staffMesh.scale.set(1, 1, 1);
         this.staffPivot.rotation.y = -1.8 + swingProg * 3.6 * (this.comboStep % 2 === 0 ? -1 : 1);
@@ -378,7 +389,7 @@ export class WukongController {
       (this.slashArc.material as THREE.MeshBasicMaterial).opacity *= 0.88;
     } else {
       this.staffMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 10);
-      this.staffPivot.rotation.set(0, 0, 0);
+      if (!this.handAttached) this.staffPivot.rotation.set(0, 0, 0);
       (this.slashArc.material as THREE.MeshBasicMaterial).opacity = 0;
       if (isMoving && !this.onNimbus) {
         this.bodyWrap.position.y = Math.abs(Math.sin(performance.now() * 0.015)) * 0.14;

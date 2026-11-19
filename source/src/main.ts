@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { SparkRenderer } from '@sparkjsdev/spark';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
+import { EffectComposer, RenderPass, EffectPass, BloomEffect, HueSaturationEffect, BrightnessContrastEffect, VignetteEffect } from 'postprocessing';
 import { WUKONG_CHAPTERS } from './data/ChaptersData';
 import { WukongController } from './player/WukongController';
 import { EnemyManager } from './enemies/EnemyManager';
@@ -24,7 +24,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = 1.38;
 
 const scene = new THREE.Scene();
 const spark = new SparkRenderer({ renderer });
@@ -46,10 +46,10 @@ lockSprite.visible = false;
 scene.add(lockSprite);
 
 // Cinematic Mythic Lighting
-const hemiLight = new THREE.HemisphereLight(0xffeacc, 0x1b2432, 1.05);
+const hemiLight = new THREE.HemisphereLight(0xf2c27a, 0x1a2428, 1.35);
 scene.add(hemiLight);
 
-const sunLight = new THREE.DirectionalLight(0xffdfad, 2.25);
+const sunLight = new THREE.DirectionalLight(0xffd09a, 2.35);
 sunLight.position.set(18, 32, 20);
 sunLight.castShadow = true;
 sunLight.shadow.mapSize.set(1024, 1024);
@@ -62,19 +62,22 @@ sunLight.shadow.camera.top = d;
 sunLight.shadow.camera.bottom = -d;
 scene.add(sunLight);
 
-const rimLight = new THREE.DirectionalLight(0x6bb8ff, 0.85);
+const rimLight = new THREE.DirectionalLight(0x6fe3d6, 0.9);
 rimLight.position.set(-20, 14, -22);
 scene.add(rimLight);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new BloomEffect({
-  intensity: 0.55,
+  intensity: 0.5,
   luminanceThreshold: 0.62,
   luminanceSmoothing: 0.25,
   mipmapBlur: true,
 });
 composer.addPass(new EffectPass(camera, bloom));
+
+// EVA-like cinematic grade: desaturated, high-contrast, dark edges.
+
 
 // Subsystems
 const gltfLoader = new GLTFLoader();
@@ -102,10 +105,13 @@ let chapterClearedTriggered = false;
 let chapterReady = false;
 let fireBurnCooldown = 0;
 let lastComboVoice = 0;
+let paused = false;
 let lowQuality = false;
 let fpsTime = 0;
 let fpsFrames = 0;
 let lowHpPlayed = false;
+let comboCount = 0;
+let comboTimer = 0;
 
 const keys = new Set<string>();
 
@@ -147,10 +153,17 @@ const modalTitle = document.getElementById('modal-title')!;
 const modalDesc = document.getElementById('modal-desc')!;
 const btnModalAction = document.getElementById('btn-modal-action') as HTMLButtonElement;
 const btnModalAlt = document.getElementById('btn-modal-alt') as HTMLButtonElement;
+const pauseOverlay = document.getElementById('pause-overlay')!;
+const btnPauseResume = document.getElementById('btn-pause-resume')!;
+const btnPauseSound = document.getElementById('btn-pause-sound') as HTMLButtonElement;
+const btnPauseRestart = document.getElementById('btn-pause-restart')!;
 const storySub = document.getElementById('story-sub')!;
 const chapterLoading = document.getElementById('chapter-loading')!;
 const chapterLoadingText = chapterLoading.querySelector('.cl-t')!;
 const lowHp = document.getElementById('low-hp')!;
+const hitFlash = document.getElementById('hit-flash')!;
+const comboHud = document.getElementById('combo-hud')!;
+const comboCountEl = document.getElementById('combo-count')!;
 const rootsCountEl = document.getElementById('roots-count')!;
 const karmaFillEl = document.getElementById('karma-fill')!;
 const karmaLabelEl = document.getElementById('karma-label')!;
@@ -170,6 +183,8 @@ async function startChapter(idx: number): Promise<void> {
   chapterReady = false;
   lockTarget = null;
   lockSprite.visible = false;
+  document.body.classList.remove('eva-alert');
+  resetCombo();
   modalOpen = false;
   chapterLoadingText.textContent = `正在展开${cfg.title.split(' · ')[0]}`;
   chapterLoading.classList.remove('hidden');
@@ -370,6 +385,7 @@ document.getElementById('btn-start-game')!.addEventListener('click', async () =>
   titleScreen.classList.add('hidden');
   hud.classList.remove('hidden');
   gameStarted = true;
+  togglePause(false);
   roots = 0;
   karma = 0;
   damageBonus = 0;
@@ -393,6 +409,9 @@ document.querySelectorAll('.spell-slot').forEach((slot) => {
   });
 });
 
+btnPauseResume.addEventListener('click', () => togglePause(false));
+btnPauseRestart.addEventListener('click', () => { togglePause(false); startChapter(currentChapter); });
+btnPauseSound.addEventListener('click', (ev) => { const m = audio.toggleMute(); (ev.currentTarget as HTMLButtonElement).textContent = m ? '声音：关' : '声音：开'; });
 document.getElementById('btn-mute')!.addEventListener('click', (ev) => {
   const muted = audio.toggleMute();
   (ev.currentTarget as HTMLButtonElement).textContent = muted ? '声音：关' : '声音：开';
@@ -417,6 +436,7 @@ window.addEventListener('keydown', (e) => {
   if (k === '3') castSpell(3);
   if (k === '4') castSpell(4);
   if (k === 'r') useImmortalGourd();
+  if (e.key === 'Escape') { togglePause(); return; }
   if (k === 'q') toggleLockOn();
   if (e.key === 'Tab') { e.preventDefault(); toggleLockOn(); }
   if (k === 'm') { const m = audio.toggleMute(); (document.getElementById('btn-mute') as HTMLButtonElement).textContent = m ? '声音：关' : '声音：开'; }
@@ -457,6 +477,25 @@ function showStory(text: string, ms = 4200): void {
   storySub.classList.remove('hidden');
   window.clearTimeout(storyTimer);
   storyTimer = window.setTimeout(() => storySub.classList.add('hidden'), ms);
+}
+
+function bumpCombo(): void {
+  comboCount += 1;
+  comboTimer = 2.2;
+  comboCountEl.textContent = String(comboCount);
+  comboHud.classList.toggle('hidden', comboCount < 2);
+}
+
+function resetCombo(): void {
+  comboCount = 0;
+  comboTimer = 0;
+  comboHud.classList.add('hidden');
+}
+
+function flashPlayerHit(): void {
+  hitFlash.classList.remove('active');
+  void hitFlash.offsetWidth;
+  hitFlash.classList.add('active');
 }
 
 function updateRootHud(): void {
@@ -543,6 +582,15 @@ function showEnding(): void {
   }
 }
 
+function togglePause(next?: boolean): void {
+  if (modalOpen && !paused) return;
+  paused = next ?? !paused;
+  pauseOverlay.classList.toggle('hidden', !paused);
+  if (paused) {
+    btnPauseSound.textContent = audio.muted ? '声音：关' : '声音：开';
+  }
+}
+
 // Main 60fps Game Loop
 let lastTime = performance.now();
 
@@ -573,7 +621,12 @@ requestAnimationFrame(animate);
     return;
   }
 
+  if (paused) { composer.render(rawDt); return; }
   const dt = vfx.update(rawDt);
+  if (comboTimer > 0) {
+    comboTimer -= dt;
+    if (comboTimer <= 0) resetCombo();
+  }
   fireBurnCooldown = Math.max(0, fireBurnCooldown - rawDt);
 
   if (!modalOpen) {
@@ -591,7 +644,7 @@ requestAnimationFrame(animate);
         if (e.root.position.distanceTo(strikeCenter) <= reach + e.spec.scale * 0.45) {
           landed = true;
           const baseDmg = Math.round(
-            (hero.isHeavySlam ? 85 + heavySlamBeans * 58 : 34 + hero.comboStep * 9) * (1 + damageBonus)
+            (hero.isHeavySlam ? 85 + heavySlamBeans * 58 : 34 + hero.comboStep * 9) * (1 + damageBonus) * (1 + Math.min(comboCount, 20) * 0.015)
           );
           const enteredP2 = enemies.applyDamage(e, baseDmg, fwd);
           vfx.triggerHitJuice(
@@ -605,6 +658,7 @@ requestAnimationFrame(animate);
           }
           if (enteredP2) {
             vfx.spawnShockwave(e.root.position, 12, 0xff3b1f);
+            document.body.classList.add('eva-alert');
             audio.setBossPhase(true);
             audio.playBossRoar();
             audio.playVoice('phase');
@@ -613,6 +667,7 @@ requestAnimationFrame(animate);
         }
       }
       if (landed) {
+        bumpCombo();
         hero.hitDealtThisSwing = true;
         audio.playStaffHit(hero.isHeavySlam);
       }
@@ -684,6 +739,8 @@ requestAnimationFrame(animate);
           return;
         }
         hero.hp = Math.max(0, hero.hp - hitEv.damage);
+        resetCombo();
+        flashPlayerHit();
         vfx.shakeIntensity = Math.max(vfx.shakeIntensity, hitEv.isBossSlam ? 0.52 : 0.25);
         vfx.spawnFloatingText(hero.root.position, `-${hitEv.damage}`, hitEv.isBossSlam);
         if (hitEv.isBossSlam) {
@@ -746,7 +803,12 @@ requestAnimationFrame(animate);
     hero.root.position.y + camHeight,
     hero.root.position.z + Math.cos(camYaw) * camDist
   );
+  const camGround = world.getTerrainHeight(desiredCamPos.x, desiredCamPos.z) + 1.15;
+  if (desiredCamPos.y < camGround) desiredCamPos.y = camGround;
   camera.position.lerp(desiredCamPos, Math.min(1, rawDt * 10));
+  const targetFov = lockTarget ? 46 : hero.isHeavySlam ? 55 : 50;
+  camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, Math.min(1, rawDt * 4));
+  camera.updateProjectionMatrix();
 
   if (vfx.shakeIntensity > 0.005) {
     camera.position.x += (Math.random() - 0.5) * vfx.shakeIntensity;
