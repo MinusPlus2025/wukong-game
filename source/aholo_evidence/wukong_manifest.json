@@ -1,0 +1,75 @@
+{
+  "assets": [
+    {
+      "filename": "wukong-tpose.glb",
+      "name": "齐天大圣孙悟空 · T-Pose",
+      "prompt": "Full body Monkey King Sun Wukong warrior standing in symmetrical T-pose, arms extended horizontally, legs straight apart, wearing ornate golden鎖子黄金甲 armor, red cape,凤翅紫金冠 crown, Black Myth Wukong game character PBR, no weapon in hand, clean humanoid rig topology",
+      "taskId": 8258546
+    },
+    {
+      "filename": "bullking-tpose.glb",
+      "name": "平天大圣牛魔王 · T-Pose",
+      "prompt": "Full body anthropomorphic Bull Demon King Niu Mowang boss standing in symmetrical T-pose, arms extended horizontally, heavy dark iron and molten lava armor, curved bull horns, fierce Journey to the West game boss PBR",
+      "taskId": 8258552
+    },
+    {
+      "filename": "yaoguai-guard.glb",
+      "name": "巡山狼妖先锋 · T-Pose",
+      "prompt": "Full body anthropomorphic armored wolf demon warrior standing in symmetrical T-pose, bronze shoulder armor, Journey to the West action RPG enemy PBR",
+      "taskId": 8270069
+    },
+    {
+      "filename": "jingubang-pillar.glb",
+      "name": "东海定海神针 · 如意金箍棒",
+      "prompt": "Monumental ornate golden-banded Ruyi Jingu Bang pillar engraved with coiled dragon reliefs and glowing runes on an ancient Dragon Palace stone pedestal, Journey to the West relic PBR",
+      "taskId": 8270072
+    },
+    {
+      "filename": "plantain-fan.glb",
+      "name": "翠云山 · 铁扇仙芭蕉宝扇",
+      "prompt": "Magical glowing emerald jade and golden phoenix-veined giant Plantain Fan Bajiaoshan treasure from Journey to the West, mystical wind aura, clean 3D prop PBR",
+      "taskId": 8270076
+    },
+    {
+      "filename": "peach-tree.glb",
+      "name": "千年仙桃古树",
+      "prompt": "Ancient gnarled Chinese immortal peach blossom tree growing on mossy cliff rock, glowing pink blossoms and golden peaches, Black Myth Wukong Unreal Engine 5 environment asset PBR, isolated prop",
+      "taskId": 8273186
+    },
+    {
+      "filename": "dragon-cauldron.glb",
+      "name": "盘龙青铜仙鼎",
+      "prompt": "Ornate ancient Chinese bronze tripod incense burner cauldron engraved with coiled dragons and glowing amber embers inside, Black Myth Wukong temple prop PBR",
+      "taskId": 8273191
+    },
+    {
+      "filename": "stone-shrine.glb",
+      "name": "古刹石灯土地庙",
+      "prompt": "Weathered ancient Chinese carved stone mountain shrine lantern pagoda covered with subtle moss and warm glowing lantern light inside, Black Myth Wukong shrine asset PBR",
+      "taskId": 8273195
+    },
+    {
+      "filename": "lava-obelisk.glb",
+      "name": "火焰山镇魔赤岩碑",
+      "prompt": "Jagged volcanic basalt cliff rock formation with glowing molten magma veins and ancient Chinese talisman chains, Journey to the West Flaming Mountain environment prop PBR",
+      "taskId": 8273200
+    },
+    {
+      "filename": "jade-pillar.glb",
+      "name": "凌霄蟠龙白玉柱",
+      "prompt": "Monumental Chinese celestial white jade palace column wrapped with sculpted golden imperial dragon relief and cloud base, South Heaven Gate architecture PBR",
+      "taskId": 8273205
+    }
+  ],
+  "huaguoshan_world": {
+    "worldId": "3FO4K4REIA5U"
+  },
+  "rig_tasks": {
+    "wukong-tpose.glb": 8270067,
+    "bullking-tpose.glb": 8270068
+  },
+  "retarget_tasks": {
+    "wukong-tpose.glb": 8271499,
+    "bullking-tpose.glb": 8271516
+  }
+}
