@@ -65,8 +65,10 @@ export class ChapterWorld {
       void this.loadHuaguoshanProps(loader);
     } else if (config.index === 1) {
       this.buildFlamingMountainBiome(Boolean(config.hasFireBarrier), loader);
+      void this.loadExtraProps(config, loader);
     } else {
       this.buildCelestialGateBiome();
+      void this.loadExtraProps(config, loader);
     }
 
     // 5. Collectible Immortal Peaches (千年蟠桃 — heals +90 HP & +35 Mana)
@@ -338,6 +340,47 @@ export class ChapterWorld {
         const d = Math.sqrt(d2) || 0.001;
         pos.x = c.x + (dx / d) * minDist;
         pos.z = c.z + (dz / d) * minDist;
+      }
+    }
+  }
+
+  private async loadExtraProps(config: ChapterConfig, loader: GLTFLoader): Promise<void> {
+    const defsByChapter = config.index === 1
+      ? [
+          { file: 'cliff-rock', x: -17, z: 7, h: 5.2 },
+          { file: 'war-drum', x: 9, z: 5, h: 2.2 },
+          { file: 'red-banner', x: -7, z: -5, h: 4.0 },
+          { file: 'red-banner', x: 7, z: -5, h: 4.0 },
+          { file: 'stone-pagoda', x: 18, z: -8, h: 4.0 },
+          { file: 'bamboo-shoot', x: -20, z: -9, h: 4.0 },
+        ]
+      : [
+          { file: 'stone-lantern', x: -6, z: 3, h: 3.0 },
+          { file: 'stone-lantern', x: 6, z: 3, h: 3.0 },
+          { file: 'guardian-statue', x: -9, z: -10, h: 3.4 },
+          { file: 'guardian-statue', x: 9, z: -10, h: 3.4 },
+          { file: 'stone-pagoda', x: -18, z: 8, h: 4.2 },
+          { file: 'moon-gate', x: 20, z: -12, h: 5.5 },
+          { file: 'hanging-lantern', x: 4, z: 7, h: 2.0 },
+        ];
+    for (const d of defsByChapter) {
+      try {
+        const gltf = await loader.loadAsync(`models/live-opt/${d.file}.glb`);
+        if (this.currentChapterIdx !== config.index) return;
+        const m = gltf.scene;
+        const box = new THREE.Box3().setFromObject(m);
+        const size = new THREE.Vector3(); const ctr = new THREE.Vector3();
+        box.getSize(size); box.getCenter(ctr);
+        const s = d.h / Math.max(0.01, size.y);
+        m.scale.setScalar(s);
+        const y = this.getTerrainHeight(d.x, d.z);
+        m.position.set(d.x - ctr.x * s, y - box.min.y * s, d.z - ctr.z * s);
+        m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        this.worldGroup.add(m);
+        const radius = Math.max(size.x, size.z) * s * 0.42;
+        this.colliders.push({ x: d.x, z: d.z, r: Math.max(0.55, radius), h: d.h });
+      } catch {
+        // optional prop
       }
     }
   }
