@@ -106,6 +106,8 @@ let camPitch = 0.28;
 let lockTarget: ActiveEnemy | null = null;
 let heavySlamBeans = 1;
 let chapterClearedTriggered = false;
+let bossCheckpoint = false;
+let tutorialParryShown = false;
 let chapterReady = false;
 let fireBurnCooldown = 0;
 let lastComboVoice = 0;
@@ -199,6 +201,8 @@ async function startChapter(idx: number): Promise<void> {
   currentChapter = THREE.MathUtils.clamp(idx, 0, ACTIVE_CHAPTERS.length - 1);
   const cfg = ACTIVE_CHAPTERS[currentChapter];
   chapterClearedTriggered = false;
+  bossCheckpoint = false;
+  tutorialParryShown = false;
   chapterReady = false;
   chapterSpirits = 0;
   chapterDamage = 0;
@@ -759,6 +763,44 @@ function togglePause(next?: boolean): void {
   }
 }
 
+function respawnAtBoss(): void {
+  const boss = enemies.getActiveBoss();
+  if (!boss) { startChapter(currentChapter); return; }
+  modalOverlay.classList.add('hidden');
+  modalOpen = false;
+  gameStarted = true;
+  hero.hp = hero.maxHp;
+  hero.mana = hero.maxMana;
+  gourdCharges = 3;
+  hero.root.position.set(0, world.getTerrainHeight(0, 6), 6);
+  hero.yaw = Math.PI;
+  hero.root.rotation.y = Math.PI;
+  camYaw = 0;
+  for (const e of enemies.enemies) {
+    if (!e.spec.isBoss) {
+      e.dead = true;
+      e.deathTimer = 0;
+      e.hpBarWrap.remove();
+      scene.remove(e.root);
+    }
+  }
+  boss.hp = boss.maxHp;
+  boss.phase2 = false;
+  boss.phase3 = false;
+  boss.brokenTimer = 0;
+  boss.staggerTimer = 0;
+  boss.windUpTimer = 0;
+  boss.attackCooldown = 1.4;
+  boss.modelWrap.scale.setScalar(1.0);
+  boss.root.position.set(boss.spec.pos[0], world.getTerrainHeight(boss.spec.pos[0], boss.spec.pos[1]), boss.spec.pos[1]);
+  chapterDamage = 0;
+  chapterStartedAt = performance.now();
+  chapterReady = true;
+  chapterClearedTriggered = false;
+  lockTarget = boss;
+  showToast('归来 · 再战妖王');
+}
+
 // Main 60fps Game Loop
 let lastTime = performance.now();
 
@@ -971,14 +1013,23 @@ requestAnimationFrame(animate);
             '胜败乃兵家常事',
             '灵台蒙尘 · 重整金甲',
             '大圣有七十二般变化与不坏金身，饮尽仙酿即可再战妖魔！',
-            '元神归位 · 再战本回',
-            () => startChapter(currentChapter)
+            bossCheckpoint ? '再战妖王' : '元神归位 · 再战本回',
+            () => bossCheckpoint ? respawnAtBoss() : startChapter(currentChapter)
           );
         }
       },
       (p) => world.resolveCollision(p, 0.5)
     );
     audio.inCombat = anyAggro;
+    if (!tutorialParryShown && enemies.enemies.some((e) => !e.dead && e.windUpTimer > 0)) {
+      tutorialParryShown = true;
+      showStory('红光起 · 按 F 弹反；破防后再按 F 处决', 4200);
+    }
+    const checkpointBoss = enemies.getActiveBoss();
+    if (checkpointBoss && !bossCheckpoint && enemies.getAliveEnemies().every((e) => e.spec.isBoss)) {
+      bossCheckpoint = true;
+      showToast(`检查点 · ${checkpointBoss.spec.name}`);
+    }
 
     // 6. Check Chapter Clear Condition
     if (chapterReady && !chapterClearedTriggered && enemies.getAliveEnemies().length === 0) {
