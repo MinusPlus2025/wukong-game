@@ -16,6 +16,7 @@ export interface ActiveEnemy {
   hp: number;
   maxHp: number;
   baseScale: number;
+  dragonForm?: { skin: THREE.SkinnedMesh; rise: THREE.AnimationAction; progress: number };
   phase2: boolean;
   frozenTimer: number;
   windUpTimer: number;
@@ -295,6 +296,20 @@ export class EnemyManager {
           }
           enemy.mixer = new THREE.AnimationMixer(m);
           enemy.actions = gltf.animations.map((c) => enemy.mixer!.clipAction(c));
+          if (url === 'models/zhulong-dragon-rigged.glb') {
+            const skin = m.getObjectByName('geometry_0') as THREE.SkinnedMesh;
+            // Add offsets in bind-pose units. Root anchors the clouds, successive
+            // spine joints lift the coils and extend the neck toward the muzzle.
+            const offsets = [[.035,.055,-.035],[.06,.065,-.06],[.04,.067,-.04],
+              [-.055,.04,.055],[-.075,.025,.075],[-.04,.032,.04]];
+            const tracks = offsets.map((v,i) => new THREE.VectorKeyframeTrack(
+              'spine_'+(i+1)+'.position', [0,1], [...v,...v]));
+            const rise = enemy.mixer.clipAction(new THREE.AnimationClip(
+              'Uncoil',1,tracks,THREE.AdditiveAnimationBlendMode));
+            rise.setEffectiveWeight(0).play();
+            enemy.dragonForm = { skin, rise, progress: 0 };
+            enemy.modelWrap.rotation.y = Math.PI/4;
+          }
           const find = (re: RegExp) => gltf.animations.findIndex((c) => re.test(c.name));
           enemy.idleClipIdx = find(/idle/i);
           enemy.attackClipIdx = find(/headbutt|punch|bite|attack|claw|hit/i);
@@ -368,20 +383,46 @@ export class EnemyManager {
     return this.enemies.find((e) => e.spec.isBoss && !e.dead) ?? null;
   }
 
-  private spawnDragonBreath(e: ActiveEnemy): void {
-    const fwd = new THREE.Vector3(Math.sin(e.root.rotation.y), 0, Math.cos(e.root.rotation.y));
-    const geo = new THREE.CylinderGeometry(0.35, 4.2, 10, 20, 1, true);
-    geo.rotateX(Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xff6a1a, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-    const cone = new THREE.Mesh(geo, mat);
-    cone.position.copy(e.root.position).addScaledVector(fwd, 4.8);
-    cone.position.y += 1.5;
-    cone.rotation.y = e.root.rotation.y + Math.PI;
+  private readonly muzzle = new THREE.Vector3();
+  private readonly jaw = new THREE.Vector3();
+
+  private alignBreath(e: ActiveEnemy): THREE.Vector3 {
+    const form = e.dragonForm;
+    if (!form) return this.muzzle.copy(e.root.position).add(new THREE.Vector3(0,1.5,0));
+    // Two surface landmarks on the authored head, evaluated after skinning.
+    e.root.updateWorldMatrix(true,true);
+    form.skin.localToWorld(form.skin.getVertexPosition(47572,this.muzzle));
+    form.skin.localToWorld(form.skin.getVertexPosition(61380,this.jaw));
+    this.jaw.subVectors(this.muzzle,this.jaw);
+    e.modelWrap.rotation.y += THREE.MathUtils.euclideanModulo(
+      e.attackYaw - Math.atan2(this.jaw.x,this.jaw.z) + Math.PI, 2*Math.PI) - Math.PI;
+    e.root.updateWorldMatrix(true,true);
+    form.skin.localToWorld(form.skin.getVertexPosition(47572,this.muzzle));
+    e.root.worldToLocal(e.telegraphRing.position.copy(this.muzzle));
+    e.telegraphRing.position.y = .08;
+    return this.muzzle;
+  }
+
+  private spawnDragonBreath(e: ActiveEnemy): THREE.Vector3 {
+    performance.mark('wukong-dragon-breath');
+    const mouth = this.alignBreath(e);
+    const vertices: number[] = [];
+    const halfAngle = Math.acos(.42);
+    const ground = e.root.position.y + .16 - mouth.y;
+    for (let i=0;i<32;i++) {
+      const a = halfAngle*(i/16-1), b = a + halfAngle/16;
+      vertices.push(0,0,0,10*Math.sin(a),ground,10*Math.cos(a),10*Math.sin(b),ground,10*Math.cos(b));
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices,3));
+    const mat = new THREE.MeshBasicMaterial({color:0xff751d,transparent:true,opacity:.55,
+      side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false});
+    const cone = new THREE.Mesh(geo,mat);
+    cone.position.copy(mouth);
+    cone.rotation.y = e.attackYaw;
     this.scene.add(cone);
     this.breathFx.push({ mesh: cone, life: 0.45 });
+    return mouth;
   }
 
   public isAnyAttackImminentNear(pos: THREE.Vector3, radius = 6.2): boolean {
@@ -414,6 +455,14 @@ export class EnemyManager {
       enemy.root.position.addScaledVector(knockbackDir, 0.25);
     }
 
+    const entering = enemy.spec.isBoss && !enemy.phase2 && enemy.hp > 0 && enemy.hp <= enemy.maxHp * .5;
+    if (entering && enemy.spec.name.includes('龙')) {
+      performance.mark('wukong-dragon-rise');
+      enemy.windUpTimer = enemy.recoveryTimer = 0;
+      enemy.pattern = 0;
+      enemy.attackCooldown = 0;
+      (enemy.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
+    }
     // Boss 50% HP Phase-2 "法天象地" Enrage!
     if (enemy.spec.isBoss && !enemy.phase3 && enemy.hp > 0 && enemy.hp <= enemy.maxHp * 0.2) {
       enemy.phase3 = true;
@@ -443,7 +492,7 @@ export class EnemyManager {
       (enemy.sealRing.material as THREE.MeshBasicMaterial).opacity = 0;
       enemy.hpBarWrap.style.opacity = '0';
     }
-    return triggeredPhase2;
+    return entering || triggeredPhase2;
   }
 
   public addPosture(enemy: ActiveEnemy, amount: number): boolean {
@@ -545,11 +594,16 @@ export class EnemyManager {
         for (const a of e.dragonAttackUniforms) a.value = e.windUpTimer > 0 ? Math.min(1, (1.1 - e.windUpTimer) / 0.5) : 0;
         e.modelWrap.position.y = Math.sin(t * 1.2) * 0.15;
       }
-      if (e.actions.length > 0 && e.spec.name.includes('龙')) {
+      if (!e.dragonForm && e.actions.length > 0 && e.spec.name.includes('龙')) {
         const dtSway = performance.now() * 0.001;
         e.modelWrap.rotation.y = Math.sin(dtSway * 0.9) * (e.windUpTimer > 0 ? 0.035 : 0.15);
         e.modelWrap.rotation.z = Math.sin(dtSway * 1.35) * 0.045;
         e.modelWrap.position.y = 0.1 + Math.sin(dtSway * 1.7) * 0.095;
+      }
+      const form = e.dragonForm;
+      if (form) {
+        form.progress = e.phase2 ? Math.min(1, form.progress + dt / 1.25) : 0;
+        form.rise.setEffectiveWeight(THREE.MathUtils.smoothstep(form.progress,0,1));
       }
       if (e.mixer && e.frozenTimer <= 0) {
         e.mixer.update(dt * (e.phase3 ? 1.55 : e.phase2 ? 1.35 : 1.0));
@@ -565,6 +619,10 @@ export class EnemyManager {
         e.modelWrap.scale.lerp(new THREE.Vector3(restS, restS, restS), dt * 8);
       }
 
+      if (form && e.phase2 && form.progress < 1) {
+        e.vel.set(0,0,0);
+        continue;
+      }
       // Immobilized by [1] 定身术
       if (e.frozenTimer > 0) {
         e.frozenTimer -= dt;
@@ -605,7 +663,7 @@ export class EnemyManager {
       );
       const dist = toPlayer.length();
       const aggroRadius = e.spec.isBoss ? 26 : 17;
-      const atkRange = e.spec.isBoss ? 4.3 : 2.55;
+      const atkRange = e.dragonForm && e.phase2 && e.pattern === 0 ? 8 : e.spec.isBoss ? 4.3 : 2.55;
 
       if (dist < aggroRadius) {
         anyAggro = true;
@@ -616,6 +674,7 @@ export class EnemyManager {
         if (e.windUpTimer > 0) {
           e.vel.multiplyScalar(Math.max(0, 1 - dt * 10));
           this.playEnemyClip(e, e.attackClipIdx);
+          if (e.dragonForm && e.pattern === 2) this.alignBreath(e);
           e.windUpTimer -= dt;
           const pulse = 0.42 + Math.abs(Math.sin(performance.now() * 0.02)) * 0.45;
           (e.telegraphRing.material as THREE.MeshBasicMaterial).opacity = pulse;
@@ -652,9 +711,9 @@ export class EnemyManager {
             }
             if (isBoss && e.spec.name.includes('龙') && e.pattern === 2) {
               // Dragon breath: forward cone instead of a circular shockwave.
-              this.spawnDragonBreath(e);
-              const fwd = new THREE.Vector3(Math.sin(e.root.rotation.y), 0, Math.cos(e.root.rotation.y));
-              const to = new THREE.Vector3(playerPos.x - e.root.position.x, 0, playerPos.z - e.root.position.z);
+              const mouth = this.spawnDragonBreath(e);
+              const fwd = new THREE.Vector3(Math.sin(e.attackYaw), 0, Math.cos(e.attackYaw));
+              const to = new THREE.Vector3(playerPos.x - mouth.x, 0, playerPos.z - mouth.z);
               const breathDist = to.length();
               const inCone = breathDist < 10 && (breathDist < 0.1 || to.normalize().dot(fwd) > 0.42);
               if (inCone) {
@@ -724,7 +783,7 @@ export class EnemyManager {
             // Start telegraphed wind-up so player can dodge or counter!
             if (e.spec.isBoss) {
               // Bull commits to a charge, Hunshi to a ground burst, dragon to breath.
-              e.pattern = e.pattern === 0 ? (e.spec.name.includes('牛魔王') ? 1 : 2) : 0;
+              e.pattern = e.spec.name.includes('龙') && !e.phase2 ? 0 : e.pattern === 0 ? (e.spec.name.includes('牛魔王') ? 1 : 2) : 0;
               e.windUpTimer = [e.phase2 ? 0.68 : 0.9, 0.5, 1.15][e.pattern];
             } else {
               e.windUpTimer = e.spec.name.includes('骸骨') ? 0.85 : e.spec.name.includes('史莱姆') ? 1.05 : 0.55;
@@ -733,6 +792,8 @@ export class EnemyManager {
             e.root.rotation.y = desiredYaw;
             e.windUpDuration = e.windUpTimer;
             const breath = e.spec.name.includes('龙') && e.pattern === 2;
+            e.telegraphRing.position.set(0,.08,0);
+            if (breath) this.alignBreath(e);
             const radial = (e.spec.isBoss && e.pattern === 2) || e.spec.name.includes('史莱姆');
             const radius = breath ? 10 : e.spec.isBoss ? (e.pattern === 2 ? 7.4 : e.pattern === 1 ? 6.6 : e.phase2 ? 5.2 : 4.5) : 2.75;
             const arc = radial && !breath ? Math.PI * 2 : breath ? 2 * Math.acos(0.42) : Math.PI * 0.94;
