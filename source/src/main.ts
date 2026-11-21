@@ -1118,7 +1118,20 @@ requestAnimationFrame(animate);
 
     // 2. Check Wukong Staff Hit Detection during active swing window
     const circular = hero.isFinisher && !hero.isHeavySlam;
-    if (previousAttackTimer > 0.08 && hero.attackTimer < (hero.isHeavySlam ? 0.25 : circular ? 0.44 : 0.22)) {
+    const slamContact = hero.isHeavySlam && previousAttackTimer > WukongController.slamContactRemaining
+      && hero.attackTimer <= WukongController.slamContactRemaining;
+    if (slamContact) {
+      const impact = hero.root.position.clone();
+      impact.x += Math.sin(hero.yaw) * 2.8;
+      impact.z += Math.cos(hero.yaw) * 2.8;
+      if (hero.isGrounded) {
+        impact.y = world.getTerrainHeight(impact.x, impact.z);
+        vfx.spawnShockwave(impact, 3.2, 0xd8ab69);
+      }
+      audio.playStaffHit(true);
+    }
+    const lightContact = !hero.isHeavySlam && previousAttackTimer > 0.08 && hero.attackTimer < (circular ? 0.44 : 0.22);
+    if (slamContact || lightContact) {
       const fwd = new THREE.Vector3(Math.sin(hero.yaw), 0, Math.cos(hero.yaw));
       const firstContact = hero.struckTargets.size === 0;
       let landed = false;
@@ -1182,7 +1195,7 @@ requestAnimationFrame(animate);
         bumpCombo();
         hitStopTimer = Math.max(hitStopTimer, hero.isHeavySlam ? 0.09 : 0.045);
         vfx.shakeIntensity = Math.max(vfx.shakeIntensity, hero.isHeavySlam ? 0.24 : 0.1);
-        audio.playStaffHit(hero.isHeavySlam, hero.comboStep);
+        if (!slamContact) audio.playStaffHit(false, hero.comboStep);
       }
     }
 

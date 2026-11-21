@@ -55,6 +55,8 @@ export class WukongController {
   public spinHitDealt = false;
   public attackTimer = 0;
   public isHeavySlam = false;
+  public static readonly slamDuration = 0.84;
+  public static readonly slamContactRemaining = 0.29;
   public readonly struckTargets = new Set<number>();
 
   public dodgeTimer = 0;
@@ -414,11 +416,11 @@ export class WukongController {
     const beans = Math.max(1, Math.floor(this.focusPoints / 100));
     this.focusPoints = Math.max(0, this.focusPoints - beans * 100);
     this.chainRemaining = 0;
-    this.attackTimer = 0.62;
+    this.attackTimer = WukongController.slamDuration;
     this.isHeavySlam = true;
     this.isFinisher = false;
     this.struckTargets.clear();
-    this.velY = 7.5; // Leap into the air with giant expanding Jingu Bang!
+    this.velY = 6.4; // Leap into the air with giant expanding Jingu Bang!
     this.isGrounded = false;
     (this.slashArc.material as THREE.MeshBasicMaterial).color.setHex(0xff7722);
     (this.slashArc.material as THREE.MeshBasicMaterial).opacity = 0.95;
@@ -602,15 +604,23 @@ export class WukongController {
     }
     if (this.attackTimer > 0) {
       this.attackTimer -= dt;
-      const duration = this.isHeavySlam ? 0.62 : this.isFinisher ? 0.52 : 0.36;
+      const duration = this.isHeavySlam ? WukongController.slamDuration : this.isFinisher ? 0.52 : 0.36;
       const phase = THREE.MathUtils.clamp(1 - this.attackTimer / duration, 0, 1);
       const sweep = THREE.MathUtils.smoothstep(phase, 0.16, 0.84);
       const arc = Math.sin(Math.PI * sweep);
       this.staffMesh.scale.setScalar(1);
       this.staffPivot.rotation.order = 'YXZ';
       if (this.isHeavySlam) {
-        this.staffMesh.scale.set(2.2, 2.3, 2.2);
-        this.staffPivot.rotation.set(-0.85 + 3.15 * sweep, 0, -0.12);
+        const elapsed = duration - this.attackTimer;
+        const contact = duration - WukongController.slamContactRemaining;
+        const lift = THREE.MathUtils.smoothstep(elapsed, 0, 0.32);
+        const drop = THREE.MathUtils.smoothstep(elapsed, 0.36, contact);
+        const recover = THREE.MathUtils.smoothstep(elapsed, contact + 0.07, duration);
+        const extension = lift * (1 - recover);
+        this.staffMesh.scale.set(1 + extension, 1 + 1.3 * extension, 1 + extension);
+        this.staffPivot.rotation.set(0.08 - lift * 0.98 + drop * 3.20, 0, -0.12);
+        this.bodyWrap.position.y = -0.16 * drop * (1 - recover);
+
       } else if (this.comboStep === 1) {
         this.staffPivot.rotation.set(1.42, -1.35 + 2.55 * sweep, 0.1);
       } else if (this.comboStep === 2) {
@@ -634,11 +644,11 @@ export class WukongController {
       this.rotateJoint('leftupleg', -arc * (this.comboStep === 3 ? 0.52 : 0.24), 0);
       this.rotateJoint('rightupleg', arc * 0.18, -twist * drive * 0.2);
       this.rotateJoint('leftleg', arc * 0.22, 0);
+      this.staffPivot.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.08, 0, -0.24)), THREE.MathUtils.smoothstep(phase, 0.76, 1));
       if (this.handBone) {
         this.staffPivot.position.copy(this.root.worldToLocal(this.handBone.getWorldPosition(new THREE.Vector3())));
         this.gripStaff(engage);
       }
-      this.staffPivot.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.08, 0, -0.24)), THREE.MathUtils.smoothstep(phase, 0.76, 1));
       (this.slashArc.material as THREE.MeshBasicMaterial).opacity *= 0.88;
     } else {
       this.staffMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 10);
