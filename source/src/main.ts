@@ -1409,11 +1409,12 @@ requestAnimationFrame(animate);
     camYaw = lerpAngle(camYaw, direction + Math.PI, Math.min(1, rawDt * 2.5));
   }
   const fireCam = currentChapter === 1 && !lockTarget;
-  const camDist = frameBoss ? 10 : lockTarget ? (lockTarget.spec.isBoss ? 8.6 : 6.4) : (hero.onNimbus ? 9.2 : fireCam ? 6.2 : 6.6);
+  const dragonRise = (lockTarget ?? frameBoss)?.dragonForm?.progress ?? 0;
+  const camDist = 4.2 * dragonRise + (frameBoss ? 10 : lockTarget ? (lockTarget.spec.isBoss ? 8.6 : 6.4) : (hero.onNimbus ? 9.2 : fireCam ? 6.2 : 6.6));
   const camHeight = hero.onNimbus ? 4.2 : fireCam ? 2.2 + camPitch * 3.2 : 2.6 + camPitch * 3.6;
   const desiredCamPos = new THREE.Vector3(
     hero.root.position.x + Math.sin(camYaw) * camDist,
-    hero.root.position.y + camHeight + (frameBoss ? 1 : 0),
+    hero.root.position.y + camHeight + 1.5 * dragonRise + (frameBoss ? 1 : 0),
     hero.root.position.z + Math.cos(camYaw) * camDist
   );
   const camGround = world.getTerrainHeight(desiredCamPos.x, desiredCamPos.z) + 1.15;
@@ -1429,7 +1430,7 @@ requestAnimationFrame(animate);
   }
   camera.lookAt(
     hero.root.position.x,
-    hero.root.position.y + 1.65,
+    hero.root.position.y + 1.65 + 2.0 * dragonRise,
     hero.root.position.z
   );
 
