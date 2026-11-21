@@ -45,7 +45,7 @@ export class WukongController {
   public spinHitDealt = false;
   public attackTimer = 0;
   public isHeavySlam = false;
-  public hitDealtThisSwing = false;
+  public readonly struckTargets = new Set<number>();
 
   public dodgeTimer = 0;
   public invulnTimer = 0;
@@ -378,12 +378,12 @@ export class WukongController {
   }
 
   public startLightAttack(): boolean {
-    if (this.attackTimer > 0.14 || this.dodgeTimer > 0) return false;
+    if (this.attackTimer > (this.isFinisher ? 0.08 : 0.14) || this.dodgeTimer > 0) return false;
     this.comboStep = (this.comboStep % 4) + 1;
     this.isFinisher = this.comboStep === 4;
     this.attackTimer = this.isFinisher ? 0.52 : 0.36;
     this.isHeavySlam = false;
-    this.hitDealtThisSwing = false;
+    this.struckTargets.clear();
     (this.slashArc.material as THREE.MeshBasicMaterial).color.setHex(0xffdf7a);
     (this.slashArc.material as THREE.MeshBasicMaterial).opacity = 0.85;
     this.slashArc.rotation.z = this.comboStep * 1.4;
@@ -405,7 +405,7 @@ export class WukongController {
     this.attackTimer = 0.62;
     this.isHeavySlam = true;
     this.isFinisher = false;
-    this.hitDealtThisSwing = false;
+    this.struckTargets.clear();
     this.velY = 7.5; // Leap into the air with giant expanding Jingu Bang!
     this.isGrounded = false;
     (this.slashArc.material as THREE.MeshBasicMaterial).color.setHex(0xff7722);
