@@ -291,12 +291,16 @@ export class ChapterWorld {
     this.worldGroup.add(terrain);
 
     // Engraved Dragon/Bagua Boss Arena Disc at z = -15
-    const arenaTex = this.makeArenaTexture();
+    const skyCourt = config.index === 2;
+    const loader = new THREE.TextureLoader();
+    const arenaTex = skyCourt ? loader.load('textures/art/celestial-dial.jpg') : this.makeArenaTexture();
+    if(skyCourt){arenaTex.colorSpace=THREE.SRGBColorSpace;arenaTex.anisotropy=8}
+    const relief = skyCourt ? loader.load('textures/art/celestial-dial-height.png') : arenaTex;
     const arenaDisc = new THREE.Mesh(
       new THREE.CylinderGeometry(11.5, 12.2, 0.28, 48),
       new THREE.MeshStandardMaterial({
-        map: arenaTex, bumpMap: arenaTex, bumpScale: 0.1,
-        color: config.index === 2 ? 0xd4b46a : config.index === 1 ? 0xa8593a : 0x9aa69a,
+        map: arenaTex, bumpMap: relief, bumpScale: skyCourt ? .026 : .1,
+        color: config.index === 2 ? 0xf2ead6 : config.index === 1 ? 0xa8593a : 0x9aa69a,
         roughness: 0.62, metalness: 0.12,
       })
     );
@@ -306,6 +310,7 @@ export class ChapterWorld {
 
     if (config.index !== 1) this.buildStonePaving(config.index === 2);
 
+    if (skyCourt) return;
     const runeRing = new THREE.Mesh(
       new THREE.RingGeometry(10.6, 11.1, 64),
       new THREE.MeshBasicMaterial({
@@ -851,6 +856,37 @@ export class ChapterWorld {
         collar.position.set(x,y+h-.045,z);this.worldGroup.add(collar);
       }
     }
+
+    // Open limestone balustrades frame the terrace. Beads and lintels are
+    // instanced so the silhouette survives close views without per-post draws.
+    const railPosts=new THREE.InstancedMesh(new THREE.LatheGeometry([
+      [.32,0],[.33,.14],[.24,.22],[.21,.78],[.29,.83],[.29,.93],[.20,1.00],[.12,1.12],[0,1.16]
+    ].map(([r,h])=>new THREE.Vector2(r,h)),16),jadeMat,26);
+    const rails=new THREE.InstancedMesh(new THREE.BoxGeometry(.16,.15,2.5),jadeMat,48);
+    const stamp=new THREE.Object3D();let post=0,rail=0;
+    for(const side of [-1,1])for(let i=0;i<13;i++){
+      const x=side*11.9,z=12.5-i*2.5,y=this.getTerrainHeight(x,z);
+      stamp.position.set(x,y,z);stamp.updateMatrix();railPosts.setMatrixAt(post++,stamp.matrix);
+      if(i<12)for(const h of [.39,.76]){stamp.position.set(x,y+h,z-1.25);stamp.updateMatrix();rails.setMatrixAt(rail++,stamp.matrix)}
+    }
+    railPosts.castShadow=railPosts.receiveShadow=rails.castShadow=rails.receiveShadow=true;
+    this.worldGroup.add(railPosts,rails);
+
+    // An armillary instrument on its own plinth marks the approach to the gate.
+    const bronze=new THREE.MeshStandardMaterial({color:0x93734b,metalness:.57,roughness:.45});
+    const armillary=new THREE.Group();
+    armillary.position.set(-8.2,this.getTerrainHeight(-8.2,-9),-9);
+    const pedestal=new THREE.Mesh(new THREE.LatheGeometry([[1.16,0],[1.16,.18],[.97,.24],[.87,.37],[.67,.44],[.54,1.05],[.73,1.16],[.76,1.31],[.52,1.42]].map(([r,h])=>new THREE.Vector2(r,h)),48),jadeMat);
+    armillary.add(pedestal);
+    for(const [radius,tilt,twist] of [[1.9,0,0],[1.73,.95,.48],[1.57,-.72,1.16],[1.43,1.36,-.48]]){
+      const circle=new THREE.Mesh(new THREE.TorusGeometry(radius,.056,8,80),bronze);
+      circle.position.y=3.12;circle.rotation.set(tilt,twist,.28);armillary.add(circle);
+    }
+    const globe=new THREE.Mesh(new THREE.SphereGeometry(.33,24,16),bronze);
+    globe.position.y=3.12;armillary.add(globe);
+    const axis=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,4.1,10),bronze);
+    axis.position.y=3.12;axis.rotation.z=.28;armillary.add(axis);
+    armillary.traverse(o=>{o.castShadow=true;o.receiveShadow=true});this.worldGroup.add(armillary);
 
     // Low cloud sea and floating lanterns: fill the celestial horizon without blocking the arena.
     const cc = document.createElement('canvas');

@@ -45,7 +45,7 @@ for row, uv in zip(struct.iter_unpack('<hhhxx',xyz),struct.iter_unpack('<HH',uvs
     x,y,z = (v/32767 for v in row)
     u,v = (v/65535 for v in uv)
     r,g,b = atlas.getpixel((int(u%1*(atlas.width-1)),int(v%1*(atlas.height-1))))
-    head = y>.28 and (x-z<.83 or y>.54)
+    head = y>.31 or (y>.165 and x-z<.23)
     cloud = y<-.25 and r-g<41 and g-b<51 and g>58 and r-g<.27*g
     kinds.append(1 if head else 2 if cloud else 0)
 bits = bytearray(math.ceil(len(indices)/48))
@@ -53,11 +53,38 @@ for i, triangle in enumerate(struct.iter_unpack('<III',indices)):
     membership = sorted(kinds[k] for k in triangle)[1]
     bits[i//4] |= membership << (2*(i%4))
 (model.parent/'dragon-flight.mask').write_bytes(bits)
-rng=random.Random(83);im=Image.new('RGB',(512,512),(73,27,24));d=ImageDraw.Draw(im)
-for row in range(-1,34):
- for j in range(-1,18):
-  x=j*32+(row%2)*16;y=row*16;k=rng.randint(-12,12)
-  d.ellipse((x-17,y-13,x+17,y+13),fill=(103+k,37+k//2,34+k//3),outline=(60,27,27),width=2)
-  d.arc((x-15,y-12,x+15,y+10),15,157,fill=(164+k,90+k,63),width=2)
-  d.line((x-2,y+6,x,y-3,x+2,y+5),fill=(123+k,54+k//2,43),width=1)
-im.save(root/'public/textures/art/dragon-flight-scales.jpg',quality=91)
+# Clip an actual neck segment; preserve original UVs, normal field and PBR maps.
+# Adjacent mirrored instances meet on the identical boundary contour.
+read_normals = attrs['NORMAL']
+with tempfile.TemporaryDirectory() as temp:
+    subprocess.run(['node','--input-type=module','-e',decoder,str(model),temp,str(read_normals)],cwd=root,check=True)
+    normals=list(struct.iter_unpack('<bbbx',(Path(temp)/str(read_normals)).read_bytes()))
+points=[tuple(v/32767 for v in row) for row in struct.iter_unpack('<hhhxx',xyz)]
+coords=[tuple(v/65535 for v in row) for row in struct.iter_unpack('<HH',uvs)]
+low,high=.115,.326
+cache, vertices, faces={},[],[]
+def clip(poly,height,sign):
+    out=[]
+    for i,b in enumerate(poly):
+        a=poly[i-1];va=(a[1]-height)*sign;vb=(b[1]-height)*sign
+        if (va<0)!=(vb<0):
+            t=va/(va-vb);out.append(tuple(x+(y-x)*t for x,y in zip(a,b)))
+        if vb>=0:out.append(b)
+    return out
+for tri in struct.iter_unpack('<III',indices):
+    pp=[points[k] for k in tri]
+    if max(v[1] for v in pp)<low or min(v[1] for v in pp)>high or max(v[0] for v in pp)<.16:continue
+    # Isolated neck island throughout this vertical band.
+    if sum(v[0]-v[2] for v in pp)/3<.17:continue
+    poly=[(*points[k],*(v/127 for v in normals[k]),*coords[k]) for k in tri]
+    poly=clip(poly,low,1)
+    if poly:poly=clip(poly,high,-1)
+    ids=[]
+    for v in poly:
+        key=struct.pack('<8f',*v)
+        if key not in cache:cache[key]=len(vertices);vertices.append(key)
+        ids.append(cache[key])
+    for k in range(2,len(ids)):faces.extend([ids[0],ids[k-1],ids[k]])
+assert len(vertices)<65536
+(model.parent/'dragon-flight-neck.bin').write_bytes(struct.pack('<II',len(vertices),len(faces))+b''.join(vertices)+struct.pack('<'+'H'*len(faces),*faces))
+print('Neck patch:',len(vertices),'vertices,',len(faces)//3,'triangles')

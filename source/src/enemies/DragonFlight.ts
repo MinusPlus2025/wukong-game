@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 
-const segments = 56, sides = 20;
-const up = new THREE.Vector3(0,1,0);
+import { buildFlightSpine, bodySteps as segments, socket } from './DragonSpine';
+
 const sculptScale = 1.8;
-const joint = new THREE.Vector3(.43,.39,-.25);
+
 const mouthVertex = 47572, jawVertex = 61380;
-const orbitTime = 4.3;
+const orbitTime = 5.7;
 const aimTime = .85;
 
 function part(skin: THREE.SkinnedMesh, triangles: number[]): THREE.Mesh {
@@ -14,7 +14,7 @@ function part(skin: THREE.SkinnedMesh, triangles: number[]): THREE.Mesh {
   g.setIndex(triangles);
   g.boundingSphere=new THREE.Sphere(new THREE.Vector3(),1.8);
   const mesh = new THREE.Mesh(g, skin.material);
-  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.frustumCulled=false;mesh.castShadow = mesh.receiveShadow = true;
   return mesh;
 }
 
@@ -24,6 +24,11 @@ function part(skin: THREE.SkinnedMesh, triangles: number[]): THREE.Mesh {
 export class DragonFlight {
   progress = 0;
   private elapsed = 0;
+  private active=false;
+  private warmFrames=0;
+  private pitch=0;
+  private readonly pitchAxis=new THREE.Vector3(Math.SQRT1_2,0,Math.SQRT1_2);
+  private readonly pitchRotation=new THREE.Quaternion();
   private readonly group = new THREE.Group();
   private readonly head = new THREE.Group();
   private readonly headMesh: THREE.Mesh;
@@ -37,13 +42,16 @@ export class DragonFlight {
   private readonly lap = new THREE.CatmullRomCurve3([
     [.23,2.50,-.85],[1.2,3.0,-1.55],[3.1,3.7,-.55],[3.65,4.0,1.25],
     [2.25,4.15,3.05],[-.35,3.85,3.55],[-2.85,3.25,2.10],[-3.7,3.2,-.25],
-    [-2.5,3.65,-2.65],[-.5,3.85,-3.15],[1,3.55,-2.05],[.45,3.35,-.72],[0,3.4,.15]
+    [-2.5,3.65,-2.65],[-.65,3.0,-2.1],[.23,2.50,-.85],
+    [1.65,3.15,-1.65],[2.95,4.35,-2.25],[3.45,4.85,-1.10],[2.70,4.47,.48],[1.55,3.75,.82],[0,3.4,.15]
   ].map(v=>new THREE.Vector3(...v)));
   private readonly coilLength = this.coil.getLength();
   private readonly lapLength = this.lap.getLength();
   private readonly centers = Array.from({length:segments+1},()=>new THREE.Vector3());
-  private readonly positions = new THREE.Float32BufferAttribute(new Float32Array((segments+1)*(sides+1)*3),3);
-  private readonly normals = new THREE.Float32BufferAttribute(new Float32Array(this.positions.array.length),3);
+  private readonly body:THREE.SkinnedMesh;
+  private readonly basis=new THREE.Matrix4();
+  private readonly bendA=new THREE.Vector3();
+  private readonly bendB=new THREE.Vector3();
   private readonly tangent = new THREE.Vector3();
   private readonly right = new THREE.Vector3();
   private readonly vertical = new THREE.Vector3();
@@ -54,7 +62,7 @@ export class DragonFlight {
   private aimYaw = 0;
   private hovering = 0;
 
-  constructor(private readonly root: THREE.Group, private readonly skin: THREE.SkinnedMesh, mask: Uint8Array, scales: THREE.Texture) {
+  constructor(private readonly root: THREE.Group, private readonly skin: THREE.SkinnedMesh, mask: Uint8Array, neck: ArrayBuffer) {
     const index=skin.geometry.index!;
     if(mask.length!==Math.ceil(index.count/12)) throw new Error('Dragon flight mask does not match sculpt');
     const head:number[]=[], cloud:number[]=[];
@@ -64,7 +72,7 @@ export class DragonFlight {
       if(bucket) bucket.push(index.getX(t*3),index.getX(t*3+1),index.getX(t*3+2));
     }
     this.headMesh=part(skin,head);
-    this.headMesh.position.copy(joint).multiplyScalar(-sculptScale);
+    this.headMesh.position.copy(socket).multiplyScalar(-sculptScale);
     this.headMesh.scale.setScalar(sculptScale);
     this.head.add(this.headMesh);
     this.cloud=part(skin,cloud);
@@ -74,25 +82,12 @@ export class DragonFlight {
     crown.scale.set(.77,.14,.73); crown.position.y=-.7;
     this.cloud.add(crown);
     this.group.add(this.cloud,this.head);
-    const g=new THREE.BufferGeometry(),indices:number[]=[],uv:number[]=[],colors:number[]=[];
-    for(let i=0;i<=segments;i++) for(let j=0;j<=sides;j++){
-      uv.push(j/sides,i/segments*3.2);
-      const belly=Math.max(0,-Math.sin(j/sides*Math.PI*2));
-      colors.push(1,.82+.18*belly,.78+.22*belly);
-      const k=i*(sides+1)+j;
-      if(i<segments&&j<sides)indices.push(k,k+sides+1,k+1,k+1,k+sides+1,k+sides+2);
-    }
-    g.setIndex(indices);g.setAttribute('position',this.positions.setUsage(THREE.DynamicDrawUsage));g.setAttribute('normal',this.normals.setUsage(THREE.DynamicDrawUsage));
-    g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-    scales.wrapS=scales.wrapT=THREE.RepeatWrapping;scales.colorSpace=THREE.SRGBColorSpace;
-    const body=new THREE.Mesh(g,new THREE.MeshStandardMaterial({map:scales,vertexColors:true,roughness:.68,side:THREE.DoubleSide}));
-    body.frustumCulled=false;body.castShadow=body.receiveShadow=true;
-    this.group.add(body);root.add(this.group);this.group.visible=false;
+    this.body=buildFlightSpine(neck,this.coilLength,skin.material);
+    this.group.add(this.body);root.add(this.group);this.group.visible=false;
   }
 
-  warm(renderer:THREE.WebGLRenderer,camera:THREE.Camera,scene:THREE.Scene,scales:THREE.Texture){
-    renderer.initTexture(scales);
-    void renderer.compileAsync(this.group,camera,scene).catch(()=>{});
+  warm(renderer:THREE.WebGLRenderer,camera:THREE.Camera,scene:THREE.Scene){
+    void renderer.compileAsync(this.group,camera,scene).then(()=>{this.warmFrames=2}).catch(()=>{});
   }
 
   private draw(distance:number) {
@@ -102,28 +97,40 @@ export class DragonFlight {
       else this.lap.getPointAt(Math.min(1,d/this.lapLength),p);
       if(this.hovering>0){p.y+=.14*Math.sin(this.hovering*2.9-i*.12)*Math.min(1,this.hovering);p.x+=.17*Math.sin(this.hovering*2-i*.13)*i/segments*Math.min(1,this.hovering)}
     }
-    for(let i=0;i<=segments;i++){
-      const p=this.centers[i],u=i/segments;
-      this.tangent.subVectors(this.centers[Math.max(0,i-1)],this.centers[Math.min(segments,i+1)]).normalize();
-      this.right.crossVectors(up,this.tangent).normalize();this.vertical.crossVectors(this.tangent,this.right);
-      const radius=.38*Math.pow(1-u,.56)+.015;
-      for(let j=0;j<=sides;j++){
-        const a=j/sides*Math.PI*2,c=Math.cos(a),s=Math.sin(a),n=i*(sides+1)+j;
-        const ridge=Math.pow(Math.max(s,0),18)*(.05+.13*(i%3===0?1:0))*(1-u);
-        this.direction.copy(this.right).multiplyScalar(c).addScaledVector(this.vertical,s);
-        this.normals.setXYZ(n,this.direction.x,this.direction.y,this.direction.z);
-        this.positions.setXYZ(n,p.x+radius*this.direction.x+ridge*this.vertical.x,p.y+radius*this.direction.y+ridge*this.vertical.y,p.z+radius*this.direction.z+ridge*this.vertical.z);
-      }
-    }
-    this.positions.needsUpdate=this.normals.needsUpdate=true;
     this.head.position.copy(this.centers[0]);
     this.direction.subVectors(this.centers[0],this.centers[1]);
     return Math.atan2(this.direction.x,this.direction.z);
   }
 
+  private poseSpine(){
+    // The head cut has a downward opening. Leave the throat vertically, then
+    // turn the cervical vertebrae into the approaching back with a cubic bend.
+    const join=9, start=this.centers[0], end=this.centers[join];
+    this.direction.set(0,1,0).applyQuaternion(this.head.quaternion);
+    this.bendA.copy(start).addScaledVector(this.direction,-.58);
+    this.bendB.subVectors(end,this.centers[join+1]).normalize().multiplyScalar(.62).add(end);
+    for(let i=1;i<join;i++){
+      const t=i/join,u=1-t;
+      this.centers[i].copy(start).multiplyScalar(u*u*u).addScaledVector(this.bendA,3*u*u*t)
+        .addScaledVector(this.bendB,3*u*t*t).addScaledVector(end,t*t*t);
+    }
+    this.right.set(1,0,0).applyQuaternion(this.head.quaternion);
+    for(let i=0;i<=segments;i++){
+      if(i===0)this.tangent.copy(this.direction);
+      else this.tangent.subVectors(this.centers[i-1],this.centers[Math.min(segments,i+1)]).normalize();
+      this.right.addScaledVector(this.tangent,-this.right.dot(this.tangent)).normalize();
+      this.vertical.crossVectors(this.right,this.tangent);
+      const bone=this.body.skeleton.bones[i];bone.position.copy(this.centers[i]);
+      bone.quaternion.setFromRotationMatrix(this.basis.makeBasis(this.right,this.tangent,this.vertical));
+    }
+  }
+
   update(dt:number,phase:boolean,target:THREE.Vector3){
-    if(!phase){this.elapsed=this.progress=this.hovering=0;this.group.position.y=0;this.head.rotation.x=0;this.group.visible=false;this.skin.visible=true;return}
-    if(!this.group.visible){
+    if(!phase){this.elapsed=this.progress=this.hovering=0;this.group.position.y=0;this.head.rotation.x=0;this.active=false;this.group.visible=this.warmFrames>0;
+      if(this.warmFrames>0){this.group.scale.setScalar(.00001);this.warmFrames--}
+      this.skin.visible=true;return}
+    if(!this.active){
+      this.active=true;this.group.scale.setScalar(1);
       this.startYaw=this.root.rotation.y;
       this.cloud.matrixAutoUpdate=true;this.cloud.position.set(0,1.8,0);this.cloud.scale.setScalar(sculptScale);this.cloud.rotation.y=Math.PI/4;this.cloud.updateMatrix();
       this.root.updateWorldMatrix(true,false);this.cloudWorld.multiplyMatrices(this.root.matrixWorld,this.cloud.matrix);
@@ -134,6 +141,7 @@ export class DragonFlight {
     this.group.rotation.y=this.startYaw-this.root.rotation.y;
     this.group.updateWorldMatrix(true,false);
     this.hovering=Math.max(0,this.elapsed-orbitTime);
+    this.pitch=.34*Math.sin(Math.PI*lap);
     const yaw=this.draw(this.lapLength*THREE.MathUtils.smootherstep(lap,0,1));
     if(lap<1)this.aimYaw=yaw;
     else if(this.progress<1||this.elapsed-dt<orbitTime+aimTime){
@@ -142,7 +150,9 @@ export class DragonFlight {
       const turn=THREE.MathUtils.euclideanModulo(desired-yaw+Math.PI,2*Math.PI)-Math.PI;
       this.aimYaw=yaw+turn*THREE.MathUtils.smoothstep(this.hovering/aimTime,0,1);
     }
-    this.head.rotation.y=this.aimYaw+Math.PI/4;
+    this.head.rotation.set(0,this.aimYaw+Math.PI/4,0);
+    this.head.quaternion.multiply(this.pitchRotation.setFromAxisAngle(this.pitchAxis,this.pitch));
+    this.poseSpine();
   }
   origin(out:THREE.Vector3){return this.headMesh.localToWorld(out.fromBufferAttribute(this.skin.geometry.getAttribute('position'),mouthVertex))}
   fall(dt:number){this.head.rotation.x+=dt*.4;this.group.position.y-=dt*1.7;}
@@ -157,7 +167,9 @@ export class DragonFlight {
     this.headMesh.localToWorld(this.jaw.fromBufferAttribute(this.skin.geometry.getAttribute('position'),jawVertex));
     this.direction.subVectors(out,this.jaw);
     this.aimYaw+=THREE.MathUtils.euclideanModulo(worldYaw-Math.atan2(this.direction.x,this.direction.z)+Math.PI,2*Math.PI)-Math.PI;
-    this.head.rotation.y=this.aimYaw+Math.PI/4;
+    this.head.rotation.set(0,this.aimYaw+Math.PI/4,0);
+    this.head.quaternion.multiply(this.pitchRotation.setFromAxisAngle(this.pitchAxis,this.pitch));
+    this.poseSpine();
     return this.origin(out);
   }
 }

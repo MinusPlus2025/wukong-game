@@ -299,13 +299,13 @@ export class EnemyManager {
           enemy.actions = gltf.animations.map((c) => enemy.mixer!.clipAction(c));
           if (url === 'models/zhulong-dragon-rigged.glb') {
             const skin = m.getObjectByName('geometry_0') as THREE.SkinnedMesh;
-            const [mask,scales] = await Promise.all([
+            const [mask,neck] = await Promise.all([
               fetch('models/dragon-flight.mask').then(r=>{if(!r.ok) throw new Error('Dragon flight mask unavailable');return r.arrayBuffer()}),
-              new THREE.TextureLoader().loadAsync('textures/art/dragon-flight-scales.jpg')
+              fetch('models/dragon-flight-neck.bin').then(r=>{if(!r.ok) throw new Error('Dragon neck unavailable');return r.arrayBuffer()})
             ]);
-            if (enemy.dead || gen !== this.generation) {scales.dispose();return}
-            enemy.dragonForm = new DragonFlight(enemy.root,skin,new Uint8Array(mask),scales);
-            enemy.dragonForm.warm(this.renderer,this.camera,this.scene,scales);
+            if (enemy.dead || gen !== this.generation) {return}
+            enemy.dragonForm = new DragonFlight(enemy.root,skin,new Uint8Array(mask),neck);
+            enemy.dragonForm.warm(this.renderer,this.camera,this.scene);
             enemy.modelWrap.rotation.y = Math.PI/4;
           }
           const find = (re: RegExp) => gltf.animations.findIndex((c) => re.test(c.name));
