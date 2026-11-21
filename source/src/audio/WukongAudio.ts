@@ -172,9 +172,9 @@ export class WukongAudio {
     }).connect(this.hallReverb);
 
     const voiceMap: Record<string, string> = {
-      start: 'audio/voice-wukong/start.wav',
+      start: 'audio/staff-performance/start.wav',
       combo: 'audio/voice-wukong/combo.wav',
-      heavy: 'audio/voice-wukong/heavy.wav',
+      heavy: 'audio/staff-performance/heavy.wav',
       dodge: 'audio/voice-wukong/dodge.wav',
       ding: 'audio/voice-wukong/ding.wav',
       fan: 'audio/voice-wukong/fan.wav',
@@ -184,7 +184,7 @@ export class WukongAudio {
       choice: 'audio/voice-wukong/choice.wav',
       'ending-good': 'audio/voice-wukong/ending-good.wav',
       'ending-bad': 'audio/voice-wukong/ending-bad.wav',
-      'boss-intro': 'audio/voice-wukong/boss-intro.wav',
+      'boss-intro': 'audio/staff-performance/boss-intro.wav',
       'low-hp': 'audio/voice-wukong/low-hp.wav',
     };
     for (const [k, url] of Object.entries(voiceMap)) {
@@ -193,6 +193,9 @@ export class WukongAudio {
     const sfxMap: Record<string, string> = {
       whoosh_light: 'audio/sfx/whoosh_light.wav',
       whoosh_heavy: 'audio/sfx/whoosh_heavy.wav',
+      tap: 'audio/staff-performance/tap.wav',
+      thrust: 'audio/staff-performance/thrust.wav',
+      crusher: 'audio/staff-performance/crusher.wav',
       impact: 'audio/sfx/impact.wav',
       impact_heavy: 'audio/sfx/impact_heavy.wav',
       slam: 'audio/sfx/slam.wav',
@@ -304,9 +307,10 @@ export class WukongAudio {
 
   }
 
-  public playStaffHit(heavy = false, _comboStep = 0): void {
+  public playStaffHit(heavy = false, comboStep = 0): void {
     if (!this.isReady || this.muted) return;
-    this.playSfx(heavy ? 'impact_heavy' : 'impact', heavy ? -3 : -5, heavy ? 0.94 : [1, 1.06, 0.96, 0.9][_comboStep % 4]);
+    this.playSfx(heavy ? 'impact_heavy' : 'impact', heavy ? -5 : -7, heavy ? 0.94 : [1, 1.06, 0.96, 0.9][comboStep % 4]);
+    this.playSfx(heavy ? 'crusher' : comboStep === 3 ? 'thrust' : 'tap', heavy ? -8 : -10);
     if (heavy) {
       this.tangguDrum.triggerAttackRelease('C1', '16n', this.nextAudioTime('drum'), 0.42);
     }
