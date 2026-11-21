@@ -66,6 +66,34 @@ export class WukongController {
   private readonly staffTrailMax = 18;
   private mixer: THREE.AnimationMixer | null = null;
   private handAttached = false;
+  private bones = new Map<string, THREE.Object3D>();
+  private poseRest = new Map<THREE.Object3D, THREE.Quaternion>();
+
+  private rotateJoint(name: string, pitch: number, twist: number) {
+    const bone = this.bones.get(name);
+    if (!bone) return;
+    this.poseRest.set(bone, bone.quaternion.clone());
+    bone.rotateX(pitch);
+    bone.rotateY(twist);
+  }
+
+  private gripStaff(weight: number) {
+    const palm = this.bones.get('lefthand');
+    if (!palm) return;
+    const grip = this.staffPivot.localToWorld(new THREE.Vector3(0, 0.38, 0));
+    for (let pass = 0; pass < 4; pass++) {
+      for (const name of ['leftforearm', 'leftarm']) {
+        const joint = this.bones.get(name);
+        if (!joint) continue;
+        if (!this.poseRest.has(joint)) this.poseRest.set(joint, joint.quaternion.clone());
+        const current = joint.worldToLocal(palm.getWorldPosition(new THREE.Vector3())).normalize();
+        const target = joint.worldToLocal(grip.clone()).normalize();
+        const correction = new THREE.Quaternion().setFromUnitVectors(current, target);
+        joint.quaternion.multiply(new THREE.Quaternion().slerp(correction, weight));
+      }
+    }
+  }
+
   private handBone: THREE.Object3D | null = null;
   private actions: THREE.AnimationAction[] = [];
   private activeActionIdx = -1;
@@ -183,6 +211,30 @@ export class WukongController {
   }
 
   public async loadHeroModel(loader: GLTFLoader): Promise<void> {
+    const preview = new THREE.Group();
+    // Articulated Golden-Armor Monkey King fallback until Aholo GLB finishes downloading
+    const armorMat = new THREE.MeshStandardMaterial({ color: 0xd9a648, metalness: 0.7, roughness: 0.28 });
+    const capeMat = new THREE.MeshStandardMaterial({ color: 0xa62419, roughness: 0.65 });
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.72, 8, 16), armorMat);
+    torso.position.y = 1.12;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 16, 16), armorMat);
+    head.position.y = 1.82;
+    // Two long phoenix crown feathers (雉鸡翎)
+    for (const side of [-1, 1]) {
+      const feather = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.03, 1.35, 8),
+        new THREE.MeshBasicMaterial({ color: 0xff6a33 })
+      );
+      feather.position.set(side * 0.16, 2.35, -0.35);
+      feather.rotation.x = -0.65;
+      feather.rotation.z = side * -0.18;
+      preview.add(feather);
+    }
+    const cape = new THREE.Mesh(new THREE.ConeGeometry(0.52, 1.25, 12), capeMat);
+    cape.position.set(0, 0.95, -0.2);
+    torso.castShadow = true;
+    preview.add(torso, head, cape);
+    this.bodyWrap.add(preview);
     const candidates = ['models/wukong-animated.glb', 'models/wukong-rigged.glb', 'models/wukong-tpose.glb'];
     for (const url of candidates) {
       try {
@@ -209,6 +261,9 @@ export class WukongController {
         });
         m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { const mats = (Array.isArray((o as THREE.Mesh).material) ? (o as THREE.Mesh).material : [(o as THREE.Mesh).material]) as THREE.Material[]; for (const raw of mats) { const mat = raw as THREE.MeshStandardMaterial; if (mat?.map) { mat.map.anisotropy = 8; mat.map.needsUpdate = true; } } } });
         this.bodyWrap.add(m);
+        preview.removeFromParent();
+        disposeObject(preview);
+        m.traverse(b => { if ((b as THREE.Bone).isBone) this.bones.set(b.name.replace(/^mixamorig:?/i, "").toLowerCase(), b); });
 
         // Reparent the procedural Jingu Bang from the back to the right hand bone.
         let handBone: THREE.Object3D | null = null;
@@ -240,28 +295,7 @@ export class WukongController {
       }
     }
 
-    // Articulated Golden-Armor Monkey King fallback until Aholo GLB finishes downloading
-    const armorMat = new THREE.MeshStandardMaterial({ color: 0xd9a648, metalness: 0.7, roughness: 0.28 });
-    const capeMat = new THREE.MeshStandardMaterial({ color: 0xa62419, roughness: 0.65 });
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.72, 8, 16), armorMat);
-    torso.position.y = 1.12;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 16, 16), armorMat);
-    head.position.y = 1.82;
-    // Two long phoenix crown feathers (雉鸡翎)
-    for (const side of [-1, 1]) {
-      const feather = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.015, 0.03, 1.35, 8),
-        new THREE.MeshBasicMaterial({ color: 0xff6a33 })
-      );
-      feather.position.set(side * 0.16, 2.35, -0.35);
-      feather.rotation.x = -0.65;
-      feather.rotation.z = side * -0.18;
-      this.bodyWrap.add(feather);
-    }
-    const cape = new THREE.Mesh(new THREE.ConeGeometry(0.52, 1.25, 12), capeMat);
-    cape.position.set(0, 0.95, -0.2);
-    torso.castShadow = true;
-    this.bodyWrap.add(torso, head, cape);
+
   }
 
   public async loadStaffModel(loader: GLTFLoader): Promise<void> {
@@ -465,6 +499,8 @@ export class WukongController {
     this.invulnTimer = Math.max(0, this.invulnTimer - dt);
     this.mana = Math.min(this.maxMana, this.mana + dt * 3.5);
 
+    for (const [bone, rest] of this.poseRest) bone.quaternion.copy(rest);
+    this.poseRest.clear();
     if (this.mixer) this.mixer.update(dt);
 
     // Movement vector relative to camera yaw
@@ -572,6 +608,24 @@ export class WukongController {
       } else {
         this.staffPivot.rotation.set(1.55, -Math.PI + 2 * Math.PI * sweep, 0.18);
       }
+      if (this.comboStep === 3 && !this.isHeavySlam && this.isGrounded) {
+        const lastPhase = Math.max(0, phase - dt / duration);
+        const step = 0.65 * (THREE.MathUtils.smoothstep(phase, 0.2, 0.55) - THREE.MathUtils.smoothstep(lastPhase, 0.2, 0.55));
+        this.root.position.x += Math.sin(this.yaw) * step;
+        this.root.position.z += Math.cos(this.yaw) * step;
+      }
+      const engage = THREE.MathUtils.smoothstep(phase, 0, 0.14) * (1 - THREE.MathUtils.smoothstep(phase, 0.76, 1));
+      const twist = this.isHeavySlam ? 0.12 : this.comboStep === 3 ? 0.24 : this.comboStep === 2 ? -0.68 : 0.8;
+      const drive = engage * (2 * sweep - 1);
+      this.rotateJoint('spine', this.isHeavySlam ? drive * 0.36 : -arc * 0.10, twist * drive);
+      this.rotateJoint('leftupleg', -arc * (this.comboStep === 3 ? 0.52 : 0.24), 0);
+      this.rotateJoint('rightupleg', arc * 0.18, -twist * drive * 0.2);
+      this.rotateJoint('leftleg', arc * 0.22, 0);
+      if (this.handBone) {
+        this.staffPivot.position.copy(this.root.worldToLocal(this.handBone.getWorldPosition(new THREE.Vector3())));
+        this.gripStaff(engage);
+      }
+      this.staffPivot.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.08, 0, -0.24)), THREE.MathUtils.smoothstep(phase, 0.76, 1));
       (this.slashArc.material as THREE.MeshBasicMaterial).opacity *= 0.88;
     } else {
       this.staffMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 10);

@@ -199,6 +199,21 @@ export class EnemyManager {
   }
 
   private async populateEnemyMesh(enemy: ActiveEnemy, loader: GLTFLoader, gen: number): Promise<void> {
+    // Immediate stylized demon sentinel fallback while GLB loads
+    const mat = new THREE.MeshStandardMaterial({
+      color: enemy.spec.color,
+      roughness: 0.35,
+      metalness: 0.55,
+      emissive: enemy.spec.isBoss ? enemy.spec.color : 0x000000,
+      emissiveIntensity: enemy.spec.isBoss ? 0.25 : 0,
+    });
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.32 * enemy.spec.scale, 0.55 * enemy.spec.scale, 8, 16),
+      mat
+    );
+    body.position.y = enemy.spec.scale * 0.55;
+    body.castShadow = true;
+    enemy.modelWrap.add(body);
     const candidates = [...enemy.spec.modelCandidates, 'models/baize-beast.glb'];
     for (const url of candidates) {
       try {
@@ -251,6 +266,8 @@ export class EnemyManager {
         m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { const mats = (Array.isArray((o as THREE.Mesh).material) ? (o as THREE.Mesh).material : [(o as THREE.Mesh).material]) as THREE.Material[]; for (const raw of mats) { const mat = raw as THREE.MeshStandardMaterial; if (mat?.map) { mat.map.anisotropy = 8; mat.map.needsUpdate = true; } } } });
         enemy.modelWrap.clear();
         enemy.modelWrap.add(m);
+        body.removeFromParent();
+        disposeObject(body);
 
         if (gltf.animations && gltf.animations.length > 0) {
           enemy.mixer = new THREE.AnimationMixer(m);
@@ -304,21 +321,7 @@ export class EnemyManager {
       }
     }
 
-    // Immediate stylized demon sentinel fallback while GLB loads
-    const mat = new THREE.MeshStandardMaterial({
-      color: enemy.spec.color,
-      roughness: 0.35,
-      metalness: 0.55,
-      emissive: enemy.spec.isBoss ? enemy.spec.color : 0x000000,
-      emissiveIntensity: enemy.spec.isBoss ? 0.25 : 0,
-    });
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.32 * enemy.spec.scale, 0.55 * enemy.spec.scale, 8, 16),
-      mat
-    );
-    body.position.y = enemy.spec.scale * 0.55;
-    body.castShadow = true;
-    enemy.modelWrap.add(body);
+
   }
 
   private playEnemyClip(e: ActiveEnemy, idx: number): void {

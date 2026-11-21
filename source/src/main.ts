@@ -1112,15 +1112,20 @@ requestAnimationFrame(animate);
 
     // 2. Check Wukong Staff Hit Detection during active swing window
     if (hero.attackTimer > 0.08 && hero.attackTimer < (hero.isHeavySlam ? 0.25 : hero.isFinisher ? 0.27 : 0.22) && !hero.hitDealtThisSwing) {
-      const reach = hero.isHeavySlam ? 5.6 : hero.isFinisher ? 4.3 : 3.5;
       const fwd = new THREE.Vector3(Math.sin(hero.yaw), 0, Math.cos(hero.yaw));
-      const strikeCenter = hero.root.position.clone().addScaledVector(fwd, hero.isHeavySlam ? 2.4 : 1.5);
-
       let landed = false;
       for (const e of enemies.getAliveEnemies()) {
         const offset = e.root.position.clone().sub(hero.root.position);
-        const behindSwing = !hero.isFinisher && offset.dot(fwd) < -0.35;
-        if (!behindSwing && e.root.position.distanceTo(strikeCenter) <= reach + e.spec.scale * 0.45) {
+        const along = offset.dot(fwd);
+        const side = Math.abs(offset.x * fwd.z - offset.z * fwd.x);
+        const radius = e.spec.scale * 0.35;
+        const distance = Math.hypot(offset.x, offset.z);
+        let hits = false;
+        if (hero.isHeavySlam) hits = along >= -radius && along <= 4.6 + radius && side < 1.65 + radius;
+        else if (hero.comboStep === 3) hits = along >= 0 && along <= 6 + radius && side < 0.72 + radius;
+        else if (hero.isFinisher) hits = distance <= 4.2 + radius;
+        else hits = distance <= 3.65 + radius && along >= -(hero.comboStep === 1 ? 0.45 * distance : radius);
+        if (hits && Math.abs(offset.y) < 3 + radius) {
           landed = true;
           const baseDmg = Math.round(
             (hero.isHeavySlam ? 85 + heavySlamBeans * 58 : 34 + hero.comboStep * 9 + (hero.isFinisher ? 22 : 0)) * (1 + damageBonus) * (1 + Math.min(comboCount, 20) * 0.015) * (e.brokenTimer > 0 ? 2.2 : 1)
