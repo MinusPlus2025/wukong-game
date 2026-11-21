@@ -312,19 +312,19 @@ async function startChapter(idx: number): Promise<void> {
     scene.fog = new THREE.FogExp2(0x2a0b07, 0.021);
     hemiLight.color.setHex(0xff6a35); hemiLight.groundColor.setHex(0x120605); hemiLight.intensity = 0.62;
     sunLight.color.setHex(0xff6a2c); sunLight.intensity = 1.25;
-    rimLight.color.setHex(0x45b6ff); rimLight.intensity = 1.5;
+    rimLight.color.setHex(0xa9a6a4); rimLight.intensity = 0.68;
     renderer.toneMappingExposure = 1.15;
   } else if (currentChapter === 2) {
     scene.fog = new THREE.FogExp2(0x101b32, 0.016);
     hemiLight.color.setHex(0x8fb7d7); hemiLight.groundColor.setHex(0x111827); hemiLight.intensity = 0.7;
     sunLight.color.setHex(0xffe0b0); sunLight.intensity = 1.25;
-    rimLight.color.setHex(0x8fdfff); rimLight.intensity = 1.1;
+    rimLight.color.setHex(0xb0c9df); rimLight.intensity = 0.86;
     renderer.toneMappingExposure = 1.12;
   } else {
     scene.fog = new THREE.FogExp2(0x0a1718, 0.017);
     hemiLight.color.setHex(0xa7d9c2); hemiLight.groundColor.setHex(0x0b1712); hemiLight.intensity = 0.85;
     sunLight.color.setHex(0xffd29a); sunLight.intensity = 1.8;
-    rimLight.color.setHex(0x6fe3d6); rimLight.intensity = 1.2;
+    rimLight.color.setHex(0xb4c8ba); rimLight.intensity = 0.74;
     renderer.toneMappingExposure = 1.22;
   }
 

@@ -194,7 +194,7 @@ export const WUKONG_CHAPTERS: ChapterConfig[] = [
         scale: 3.6,
         pos: [0, -13],
         surface: 'scale',
-        modelCandidates: ['models/dragon-evolved.glb', 'models/zhulong-dragon-rigged.glb', 'models/taotie-boss.glb'],
+        modelCandidates: ['models/zhulong-dragon-rigged.glb', 'models/dragon-evolved.glb'],
         color: 0x7fd9ff,
       },
     ],

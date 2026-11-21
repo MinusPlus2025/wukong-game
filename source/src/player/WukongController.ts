@@ -1,3 +1,4 @@
+import { addAtlasRelief } from '../utils/artSurface';
 import { modelBounds } from '../utils/modelBounds';
 import { disposeObject } from '../utils/disposeObject';
 import * as THREE from 'three';
@@ -272,6 +273,7 @@ export class WukongController {
           }
         });
         m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { const mats = (Array.isArray((o as THREE.Mesh).material) ? (o as THREE.Mesh).material : [(o as THREE.Mesh).material]) as THREE.Material[]; for (const raw of mats) { const mat = raw as THREE.MeshStandardMaterial; if (mat?.map) { mat.map.anisotropy = 8; mat.map.needsUpdate = true; } } } });
+        addAtlasRelief(m,url);
         this.bodyWrap.add(m);
         preview.removeFromParent();
         disposeObject(preview);

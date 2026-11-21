@@ -1,3 +1,4 @@
+import { addAtlasRelief } from '../utils/artSurface';
 import { disposeObject } from '../utils/disposeObject';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -347,37 +348,14 @@ export class ChapterWorld {
         dummy.rotation.y=a;dummy.scale.setScalar(0.85+0.5*((i*23)%41)/41);dummy.updateMatrix();
         grass.setMatrixAt(i,dummy.matrix);
       }
+      grass.receiveShadow=true;
       this.worldGroup.add(grass);
     }
   }
 
   private buildSkyDome(config: ChapterConfig): void {
-    const c = document.createElement('canvas');
-    c.width = 1024; c.height = 512;
-    const x = c.getContext('2d')!;
-    const top = config.index === 1 ? '#080203' : config.index === 2 ? '#070b18' : '#030607';
-    const horizon = config.index === 1 ? '#b73712' : config.index === 2 ? '#477da0' : '#1d5145';
-    const bottom = config.index === 1 ? '#1b0604' : config.index === 2 ? '#101626' : '#06100d';
-    const g = x.createLinearGradient(0, 0, 0, 512);
-    g.addColorStop(0, top); g.addColorStop(0.52, top); g.addColorStop(0.64, horizon); g.addColorStop(0.72, bottom); g.addColorStop(1, bottom);
-    x.fillStyle = g; x.fillRect(0, 0, 1024, 512);
-    for (let i = 0; i < 110; i++) {
-      const yy = 90 + Math.random() * 230;
-      x.fillStyle = config.index === 1 ? `rgba(255,140,45,${0.06 + Math.random() * 0.1})` : `rgba(160,220,210,${0.04 + Math.random() * 0.1})`;
-      x.beginPath(); x.ellipse(Math.random() * 1024, yy, 60 + Math.random() * 160, 3 + Math.random() * 12, 0, 0, Math.PI * 2); x.fill();
-    }
-    if (config.index === 1) {
-      for (let i = 0; i < 80; i++) {
-        x.fillStyle = `rgba(255,110,30,${0.12 + Math.random() * 0.25})`;
-        x.fillRect(Math.random() * 1024, 300 + Math.random() * 130, 1 + Math.random() * 3, 1 + Math.random() * 3);
-      }
-    } else {
-      for (let i = 0; i < 90; i++) {
-        x.fillStyle = `rgba(220,245,240,${0.25 + Math.random() * 0.5})`;
-        x.fillRect(Math.random() * 1024, Math.random() * 260, 1, 1 + Math.random() * 2);
-      }
-    }
-    const tex = new THREE.CanvasTexture(c);
+    const sky = ['forest','fire','heaven'][config.index];
+    const tex = new THREE.TextureLoader().load('textures/art/' + sky + '-sky.jpg');
     tex.colorSpace = THREE.SRGBColorSpace;
     const dome = new THREE.Mesh(
       new THREE.SphereGeometry(120, 32, 16),
@@ -435,7 +413,7 @@ export class ChapterWorld {
   private async loadProp(url: string, loader: GLTFLoader): Promise<THREE.Group> {
     // Chapter-scoped template: repeated stones/lanterns share one decode and GPU resources.
     let pending = this.propTemplates.get(url);
-    if (!pending) { pending = loader.loadAsync(url); this.propTemplates.set(url, pending); }
+    if (!pending) { pending = loader.loadAsync(url).then(gltf => { addAtlasRelief(gltf.scene,url); return gltf; }); this.propTemplates.set(url, pending); }
     const gltf = await pending;
     return gltf.scene.clone(true);
   }
@@ -856,19 +834,21 @@ export class ChapterWorld {
       roughness: 0.2,
     });
 
-    for (const z of [8, -4, -16]) {
-      for (const side of [-1, 1]) {
-        const x = side * 14.5;
-        const y = this.getTerrainHeight(x, z);
-        const col = new THREE.Group();
-        col.position.set(x, y, z);
-        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.78, 8.8, 16), jadeMat);
-        shaft.position.y = 4.4;
-        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.78, 0.7, 16), goldCapMat);
-        cap.position.y = 9.0;
-        shaft.castShadow = true;
-        col.add(shaft, cap);
-        this.worldGroup.add(col);
+    const marble = new THREE.TextureLoader().load('textures/marble/diff.jpg');
+    marble.colorSpace = THREE.SRGBColorSpace;marble.wrapS=marble.wrapT=THREE.RepeatWrapping;marble.repeat.set(2,3);
+    jadeMat.map=marble;jadeMat.roughness=.49;jadeMat.metalness=.06;
+    goldCapMat.emissiveIntensity=.035;goldCapMat.roughness=.46;
+    // Carved bases, tapered shaft, neck mouldings and a stepped abacus.
+    const profile=[[1.08,0],[1.08,.15],[.98,.18],[.96,.28],[.83,.34],[.78,.49],[.83,.53],[.83,.63],[.72,.7],[.66,7.9],[.70,8.0],[.77,8.05],[.77,8.16],[.70,8.23],[.84,8.38],[.99,8.48],[.99,8.64],[1.1,8.70],[1.1,8.85]];
+    const shaftGeo=new THREE.LatheGeometry(profile.map(([r,y])=>new THREE.Vector2(r,y)),40);
+    const collarGeo=new THREE.TorusGeometry(.78,.035,6,40);
+    for (const z of [8,-4,-16]) for (const side of [-1,1]) {
+      const x=side*14.5,y=this.getTerrainHeight(x,z);
+      const shaft=new THREE.Mesh(shaftGeo,jadeMat);shaft.position.set(x,y-.045,z);
+      shaft.castShadow=shaft.receiveShadow=true;this.worldGroup.add(shaft);
+      for(const h of [.55,8.10]) {
+        const collar=new THREE.Mesh(collarGeo,goldCapMat);collar.rotation.x=Math.PI/2;
+        collar.position.set(x,y+h-.045,z);this.worldGroup.add(collar);
       }
     }
 

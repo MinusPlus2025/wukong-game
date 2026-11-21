@@ -54,3 +54,5 @@ https://minusplus2025.github.io/wukong-game
 三回当前各有主题、环境、阶段层与入场/转阶段提示音。新增声层由项目内脚本离线生成，沿用既有环境底声。
 
 - 项目源代码：https://github.com/MinusPlus2025/wukong-game/tree/main/source
+
+三回使用分章天空与统一的材质光照。南天门以盘云烛龙守门，保留扇形龙息；角色有待机、游行、攻击与死亡动作。

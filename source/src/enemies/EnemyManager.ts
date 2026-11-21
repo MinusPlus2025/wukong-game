@@ -1,3 +1,4 @@
+import { addAtlasRelief, dressCreature } from '../utils/artSurface';
 import { modelBounds } from '../utils/modelBounds';
 import { disposeObject } from '../utils/disposeObject';
 import * as THREE from 'three';
@@ -251,7 +252,7 @@ export class EnemyManager {
               const mat = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
               if (mat && mat.color) {
                 const clone = mat;
-                clone.color.multiplyScalar(0.62);
+                clone.color.multiplyScalar(0.88);
                 clone.emissive = new THREE.Color(0x1a0d08);
                 clone.emissiveIntensity = 0.18;
                 clone.transparent = false;
@@ -264,18 +265,40 @@ export class EnemyManager {
           }
         });
         m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { const mats = (Array.isArray((o as THREE.Mesh).material) ? (o as THREE.Mesh).material : [(o as THREE.Mesh).material]) as THREE.Material[]; for (const raw of mats) { const mat = raw as THREE.MeshStandardMaterial; if (mat?.map) { mat.map.anisotropy = 8; mat.map.needsUpdate = true; } } } });
+        addAtlasRelief(m,url);
+        if (url !== 'models/zhulong-dragon-rigged.glb') dressCreature(m,enemy.spec.surface);
         enemy.modelWrap.clear();
         enemy.modelWrap.add(m);
         body.removeFromParent();
         disposeObject(body);
 
         if (gltf.animations && gltf.animations.length > 0) {
+          if (url === 'models/zhulong-dragon-rigged.glb') {
+            // The authored rig follows the coil from its base to the crown.
+            for (const dying of [false,true]) {
+              const duration = dying ? 1.15 : 1.5;
+              const times = Array.from({length:17},(_,i)=>duration*i/16);
+              const tracks: THREE.KeyframeTrack[] = [];
+              for (let n=1;n<=6;n++) {
+                const values:number[]=[];
+                for (const time of times) {
+                  const t=time/duration;
+                  const weight=n/6;
+                  const roll=dying ? weight*.17*THREE.MathUtils.smoothstep(t,0,1) : .055*weight*Math.sin(2*Math.PI*t-n*.55);
+                  const pitch=dying ? weight*.25*THREE.MathUtils.smoothstep(t,.08,1) : .065*weight*Math.cos(2*Math.PI*t-n*.55);
+                  values.push(...new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch,0,roll)).toArray());
+                }
+                tracks.push(new THREE.QuaternionKeyframeTrack('spine_'+n+'.quaternion',times,values));
+              }
+              gltf.animations.push(new THREE.AnimationClip(dying?'Death':'Cloud_Glide',duration,tracks));
+            }
+          }
           enemy.mixer = new THREE.AnimationMixer(m);
           enemy.actions = gltf.animations.map((c) => enemy.mixer!.clipAction(c));
           const find = (re: RegExp) => gltf.animations.findIndex((c) => re.test(c.name));
           enemy.idleClipIdx = find(/idle/i);
           enemy.attackClipIdx = find(/headbutt|punch|bite|attack|claw|hit/i);
-          enemy.moveClipIdx = find(/run|walk|fast_flying/i);
+          enemy.moveClipIdx = find(/run|walk|fast_flying|cloud_glide/i);
           if (enemy.moveClipIdx < 0) enemy.moveClipIdx = find(/^(flying|fly)$/i);
           enemy.deathClipIdx = find(/death/i);
           // Retargeted bull clips have generic names. Pose inspection: 1 idle, 2 run,
@@ -524,9 +547,9 @@ export class EnemyManager {
       }
       if (e.actions.length > 0 && e.spec.name.includes('龙')) {
         const dtSway = performance.now() * 0.001;
-        e.modelWrap.rotation.y = Math.sin(dtSway * 0.9) * 0.48;
-        e.modelWrap.rotation.z = Math.sin(dtSway * 1.35) * 0.12;
-        e.modelWrap.position.y = Math.sin(dtSway * 1.7) * 0.32;
+        e.modelWrap.rotation.y = Math.sin(dtSway * 0.9) * (e.windUpTimer > 0 ? 0.035 : 0.15);
+        e.modelWrap.rotation.z = Math.sin(dtSway * 1.35) * 0.045;
+        e.modelWrap.position.y = 0.1 + Math.sin(dtSway * 1.7) * 0.095;
       }
       if (e.mixer && e.frozenTimer <= 0) {
         e.mixer.update(dt * (e.phase3 ? 1.55 : e.phase2 ? 1.35 : 1.0));
