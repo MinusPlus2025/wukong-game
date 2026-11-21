@@ -502,7 +502,7 @@ function performFormAbility(): void {
   }
   hitStopTimer = Math.max(hitStopTimer, 0.1);
   audio.playStaffHit(true);
-  audio.playVoice('combo');
+  speak('combo');
   endForm();
 }
 
@@ -510,7 +510,7 @@ function performSpinAttack(): void {
   if (!gameStarted || modalOpen || paused) return;
   if (!hero.startSpinAttack()) return;
   audio.playLightSwing(1);
-  audio.playVoice('fan');
+  speak('fan');
   showToast('棍势 · 横扫千军');
 }
 
@@ -790,6 +790,7 @@ const VOICE_TEXT: Record<string, string> = {
 
 function speak(name: string): number {
   const duration = audio.playVoice(name);
+  if (duration < 0) return 0;
   const text = VOICE_TEXT[name];
   if (text) showStory(text, Math.max(2200, duration * 1000 + 150));
   return duration;
@@ -1465,7 +1466,7 @@ requestAnimationFrame(animate);
   if (hpRatio < 0.3 && !lowHpPlayed) {
     lowHpPlayed = true;
     speak('low-hp');
-    showStory('残血 · 按 R 饮葫芦，或 Shift 闪身找机会', 2600);
+    showToast('按 R 饮葫芦');
   }
   composer.render(rawDt);
 }

@@ -13,6 +13,8 @@ export class WukongAudio {
   private synthBgm = false;
 
   private master!: Tone.Gain;
+  private effectsBus!: Tone.Gain;
+  private dialoguePriority = 0;
   private warmthFilter!: Tone.Filter;
   private hallReverb!: Tone.Reverb;
   private stereoDelay!: Tone.FeedbackDelay;
@@ -61,6 +63,7 @@ export class WukongAudio {
     this.recordDest = rawCtx.createMediaStreamDestination();
 
     this.master = new Tone.Gain(0.58);
+    this.effectsBus = new Tone.Gain(1).connect(this.master);
     this.master.connect(new Tone.Limiter(-1).toDestination());
     // Recording and speakers share the same peak protection.
     const recordLimiter = new Tone.Limiter(-1);
@@ -73,7 +76,7 @@ export class WukongAudio {
       frequency: 2650,
       rolloff: -12,
       Q: 0.6,
-    }).connect(this.master);
+    }).connect(this.effectsBus);
 
     this.hallReverb = new Tone.Reverb({ decay: 4.6, preDelay: 0.03, wet: 0.44 });
     await this.hallReverb.generate();
@@ -208,7 +211,8 @@ export class WukongAudio {
       sfxMap[surface] = 'audio/battle-voices/' + surface + '.wav';
     }
     for (const [k, url] of Object.entries(sfxMap)) {
-      this.sfxPlayers[k] = new Tone.Player({ url, volume: -5 }).connect(this.master);
+      const contact = ['hide', 'bone', 'gel', 'bronze', 'horn', 'scale'].includes(k);
+      this.sfxPlayers[k] = new Tone.Player({ url, volume: -5 }).connect(contact ? this.master : this.effectsBus);
     }
 
     // Original 64s battle loop synthesized for this project.
@@ -417,16 +421,22 @@ export class WukongAudio {
     if (!this.isReady || this.muted) return 0;
     const p = this.voices[name];
     if (!p || !p.loaded) return 0;
+    const priority = name.startsWith('ending-') ? 5 : ['death', 'victory'].includes(name) ? 4
+      : ['low-hp', 'choice'].includes(name) ? 3 : ['phase', 'boss-intro'].includes(name) ? 2 : 1;
+    if (this.activeVoice && priority <= this.dialoguePriority) return -1;
+    this.dialoguePriority = priority;
     // One dialogue lane: a new subtitle must never accompany two overlapping lines.
     this.activeVoice?.stop();
     this.activeVoice = p;
     window.clearTimeout(this.voiceDuckTimer);
     p.start(this.nextAudioTime('player:' + name));
     const duration = p.buffer.duration / p.playbackRate;
+    this.effectsBus.gain.rampTo(0.58, 0.035);
     this.bgmPlayer?.volume.rampTo(-23, 0.06);
     this.ambientPlayer?.volume.rampTo(-26, 0.06);
     this.voiceDuckTimer = window.setTimeout(() => {
       this.activeVoice = null;
+      this.effectsBus.gain.rampTo(1, 0.24);
       this.bgmPlayer?.volume.rampTo(this.inCombat ? (this.phaseActive ? -13 : -16) : -22, 0.6);
       this.ambientPlayer?.volume.rampTo(-20, 0.6);
     }, duration * 1000 + 100);
