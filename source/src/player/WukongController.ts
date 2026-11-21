@@ -527,7 +527,7 @@ export class WukongController {
       this.root.worldToLocal(hp);
       this.staffPivot.position.copy(hp);
     }
-    this.updateStaffTrail();
+
 
     // Combat swing animation & giant Ruyi Jingu Bang scaling + Aholo Retargeted Skeletal Clips
     if (this.dodgeTimer > 0) {
@@ -553,20 +553,29 @@ export class WukongController {
     }
     if (this.attackTimer > 0) {
       this.attackTimer -= dt;
-      const swingProg = 1 - Math.max(0, this.attackTimer) / (this.isHeavySlam ? 0.62 : 0.36);
+      const duration = this.isHeavySlam ? 0.62 : this.isFinisher ? 0.52 : 0.36;
+      const phase = THREE.MathUtils.clamp(1 - this.attackTimer / duration, 0, 1);
+      const sweep = THREE.MathUtils.smoothstep(phase, 0.16, 0.84);
+      const arc = Math.sin(Math.PI * sweep);
+      this.staffMesh.scale.setScalar(1);
+      this.staffPivot.rotation.order = 'YXZ';
       if (this.isHeavySlam) {
-        // Giant 2.4x Golden Pillar Slam!
         this.staffMesh.scale.set(2.2, 2.3, 2.2);
-        if (!this.handAttached) this.staffPivot.rotation.x = -1.6 + swingProg * 3.1;
+        this.staffPivot.rotation.set(-0.85 + 3.15 * sweep, 0, -0.12);
+      } else if (this.comboStep === 1) {
+        this.staffPivot.rotation.set(1.42, -1.35 + 2.55 * sweep, 0.1);
+      } else if (this.comboStep === 2) {
+        this.staffPivot.rotation.set(2.28 - 1.7 * sweep, 1.15 - 2.05 * sweep, -0.2);
+      } else if (this.comboStep === 3) {
+        this.staffPivot.rotation.set(0.38 + 1.2 * arc, 0, -0.12);
+        this.staffMesh.scale.y = 1 + 0.55 * arc;
       } else {
-        this.staffMesh.scale.set(1, 1, 1);
-        if (this.isFinisher) this.staffPivot.rotation.set(-1.1 + swingProg * 2.4, 0, 0.1);
-        else this.staffPivot.rotation.set(0, (swingProg - 0.5) * 0.7, 0.1);
+        this.staffPivot.rotation.set(1.55, -Math.PI + 2 * Math.PI * sweep, 0.18);
       }
       (this.slashArc.material as THREE.MeshBasicMaterial).opacity *= 0.88;
     } else {
       this.staffMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 10);
-      if (!this.handAttached) this.staffPivot.rotation.set(0, 0, 0);
+      this.staffPivot.rotation.set(this.handAttached ? 0.08 : 0, 0, this.handAttached ? -0.24 : 0);
       (this.slashArc.material as THREE.MeshBasicMaterial).opacity = 0;
       if (isMoving && !this.onNimbus) {
         this.bodyWrap.position.y = Math.abs(Math.sin(performance.now() * 0.012)) * 0.045;
@@ -574,6 +583,9 @@ export class WukongController {
         this.bodyWrap.position.y = 0;
       }
     }
+
+    this.staffPivot.updateWorldMatrix(true, false);
+    this.updateStaffTrail();
 
     // Fade dodge afterimages
     for (let i = this.afterimages.length - 1; i >= 0; i--) {
