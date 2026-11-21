@@ -1,3 +1,4 @@
+import { DragonFlight } from './DragonFlight';
 import { addAtlasRelief, dressCreature } from '../utils/artSurface';
 import { modelBounds } from '../utils/modelBounds';
 import { disposeObject } from '../utils/disposeObject';
@@ -16,7 +17,7 @@ export interface ActiveEnemy {
   hp: number;
   maxHp: number;
   baseScale: number;
-  dragonForm?: { skin: THREE.SkinnedMesh; rise: THREE.AnimationAction; progress: number };
+  dragonForm?: DragonFlight;
   phase2: boolean;
   frozenTimer: number;
   windUpTimer: number;
@@ -70,7 +71,7 @@ export class EnemyManager {
   private breathFx: Array<{ mesh: THREE.Mesh; life: number }> = [];
   private hpOverlay: HTMLDivElement;
 
-  constructor(private scene: THREE.Scene, private camera: THREE.PerspectiveCamera) {
+  constructor(private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, private renderer: THREE.WebGLRenderer) {
     this.hpOverlay = document.createElement('div');
     this.hpOverlay.className = 'enemy-hp-layer';
     document.body.appendChild(this.hpOverlay);
@@ -298,16 +299,13 @@ export class EnemyManager {
           enemy.actions = gltf.animations.map((c) => enemy.mixer!.clipAction(c));
           if (url === 'models/zhulong-dragon-rigged.glb') {
             const skin = m.getObjectByName('geometry_0') as THREE.SkinnedMesh;
-            // Add offsets in bind-pose units. Root anchors the clouds, successive
-            // spine joints lift the coils and extend the neck toward the muzzle.
-            const offsets = [[.035,.055,-.035],[.06,.065,-.06],[.04,.067,-.04],
-              [-.055,.04,.055],[-.075,.025,.075],[-.04,.032,.04]];
-            const tracks = offsets.map((v,i) => new THREE.VectorKeyframeTrack(
-              'spine_'+(i+1)+'.position', [0,1], [...v,...v]));
-            const rise = enemy.mixer.clipAction(new THREE.AnimationClip(
-              'Uncoil',1,tracks,THREE.AdditiveAnimationBlendMode));
-            rise.setEffectiveWeight(0).play();
-            enemy.dragonForm = { skin, rise, progress: 0 };
+            const [mask,scales] = await Promise.all([
+              fetch('models/dragon-flight.mask').then(r=>{if(!r.ok) throw new Error('Dragon flight mask unavailable');return r.arrayBuffer()}),
+              new THREE.TextureLoader().loadAsync('textures/art/dragon-flight-scales.jpg')
+            ]);
+            if (enemy.dead || gen !== this.generation) {scales.dispose();return}
+            enemy.dragonForm = new DragonFlight(enemy.root,skin,new Uint8Array(mask),scales);
+            enemy.dragonForm.warm(this.renderer,this.camera,this.scene,scales);
             enemy.modelWrap.rotation.y = Math.PI/4;
           }
           const find = (re: RegExp) => gltf.animations.findIndex((c) => re.test(c.name));
@@ -384,28 +382,20 @@ export class EnemyManager {
   }
 
   private readonly muzzle = new THREE.Vector3();
-  private readonly jaw = new THREE.Vector3();
+
 
   private alignBreath(e: ActiveEnemy): THREE.Vector3 {
     const form = e.dragonForm;
     if (!form) return this.muzzle.copy(e.root.position).add(new THREE.Vector3(0,1.5,0));
-    // Two surface landmarks on the authored head, evaluated after skinning.
-    e.root.updateWorldMatrix(true,true);
-    form.skin.localToWorld(form.skin.getVertexPosition(47572,this.muzzle));
-    form.skin.localToWorld(form.skin.getVertexPosition(61380,this.jaw));
-    this.jaw.subVectors(this.muzzle,this.jaw);
-    e.modelWrap.rotation.y += THREE.MathUtils.euclideanModulo(
-      e.attackYaw - Math.atan2(this.jaw.x,this.jaw.z) + Math.PI, 2*Math.PI) - Math.PI;
-    e.root.updateWorldMatrix(true,true);
-    form.skin.localToWorld(form.skin.getVertexPosition(47572,this.muzzle));
+    form.align(e.attackYaw,this.muzzle);
     e.root.worldToLocal(e.telegraphRing.position.copy(this.muzzle));
     e.telegraphRing.position.y = .08;
     return this.muzzle;
   }
 
   private spawnDragonBreath(e: ActiveEnemy): THREE.Vector3 {
-    performance.mark('wukong-dragon-breath');
     const mouth = this.alignBreath(e);
+    performance.mark('wukong-dragon-breath',{detail:{yawErrorDegrees:e.dragonForm?.yawError(e.attackYaw), mouth:mouth.toArray()}});
     const vertices: number[] = [];
     const halfAngle = Math.acos(.42);
     const ground = e.root.position.y + .16 - mouth.y;
@@ -563,6 +553,7 @@ export class EnemyManager {
         if (e.deathTimer > 0) {
           e.deathTimer -= dt;
           if (e.mixer) e.mixer.update(dt * 0.9);
+          if(e.dragonForm && e.phase2) e.dragonForm.fall(dt);
           if (e.deathClipIdx < 0) {
             e.modelWrap.scale.multiplyScalar(0.9);
             e.root.position.y -= dt * 1.4;
@@ -601,10 +592,7 @@ export class EnemyManager {
         e.modelWrap.position.y = 0.1 + Math.sin(dtSway * 1.7) * 0.095;
       }
       const form = e.dragonForm;
-      if (form) {
-        form.progress = e.phase2 ? Math.min(1, form.progress + dt / 1.25) : 0;
-        form.rise.setEffectiveWeight(THREE.MathUtils.smoothstep(form.progress,0,1));
-      }
+      form?.update(dt,e.phase2,playerPos);
       if (e.mixer && e.frozenTimer <= 0) {
         e.mixer.update(dt * (e.phase3 ? 1.55 : e.phase2 ? 1.35 : 1.0));
       }
@@ -674,7 +662,7 @@ export class EnemyManager {
         if (e.windUpTimer > 0) {
           e.vel.multiplyScalar(Math.max(0, 1 - dt * 10));
           this.playEnemyClip(e, e.attackClipIdx);
-          if (e.dragonForm && e.pattern === 2) this.alignBreath(e);
+          if (e.dragonForm && e.pattern === 2) {this.alignBreath(e);e.telegraphRing.rotation.z=0;}
           e.windUpTimer -= dt;
           const pulse = 0.42 + Math.abs(Math.sin(performance.now() * 0.02)) * 0.45;
           (e.telegraphRing.material as THREE.MeshBasicMaterial).opacity = pulse;
@@ -793,7 +781,14 @@ export class EnemyManager {
             e.windUpDuration = e.windUpTimer;
             const breath = e.spec.name.includes('龙') && e.pattern === 2;
             e.telegraphRing.position.set(0,.08,0);
-            if (breath) this.alignBreath(e);
+            if (breath && e.dragonForm) {
+              for(let pass=0;pass<3;pass++){
+                const mouth=this.alignBreath(e);
+                e.attackYaw=Math.atan2(playerPos.x-mouth.x,playerPos.z-mouth.z);
+              }
+              this.alignBreath(e);
+              e.telegraphRing.rotation.z=e.attackYaw-e.root.rotation.y;
+            } else e.telegraphRing.rotation.z=0;
             const radial = (e.spec.isBoss && e.pattern === 2) || e.spec.name.includes('史莱姆');
             const radius = breath ? 10 : e.spec.isBoss ? (e.pattern === 2 ? 7.4 : e.pattern === 1 ? 6.6 : e.phase2 ? 5.2 : 4.5) : 2.75;
             const arc = radial && !breath ? Math.PI * 2 : breath ? 2 * Math.acos(0.42) : Math.PI * 0.94;

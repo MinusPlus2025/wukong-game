@@ -108,7 +108,7 @@ gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 const audio = new WukongAudio();
 const vfx = new CombatVFX(scene, camera);
 const world = new ChapterWorld(scene);
-const enemies = new EnemyManager(scene, camera);
+const enemies = new EnemyManager(scene, camera, renderer);
 const hero = new WukongController(scene);
 const heroModelPromise = hero.loadHeroModel(gltfLoader);
 void hero.loadStaffModel(gltfLoader);
