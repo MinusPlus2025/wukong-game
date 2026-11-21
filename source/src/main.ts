@@ -224,6 +224,7 @@ const btnPauseRestart = document.getElementById('btn-pause-restart')!;
 const storySub = document.getElementById('story-sub')!;
 const devMode = new URLSearchParams(location.search).get('dev') === '1';
 const chapterNav = document.querySelector('.chapter-nav') as HTMLElement | null;
+if (!devMode) document.getElementById('btn-tech')!.remove();
 if (chapterNav && !devMode) chapterNav.style.display = 'none';
 const lowHp = document.getElementById('low-hp')!;
 const hitFlash = document.getElementById('hit-flash')!;
@@ -711,7 +712,7 @@ document.getElementById('btn-mute')!.addEventListener('click', (ev) => {
 });
 
 const techDrawer = document.getElementById('tech-drawer')!;
-document.getElementById('btn-tech')!.addEventListener('click', () => {
+document.getElementById('btn-tech')?.addEventListener('click', () => {
   techDrawer.classList.toggle('hidden');
 });
 document.getElementById('btn-close-tech')!.addEventListener('click', () => {
@@ -1072,6 +1073,10 @@ requestAnimationFrame(animate);
   }
 
   if (paused) { composer.render(rawDt); return; }
+  if (phaseTimer > 0) {
+    phaseTimer = Math.max(0, phaseTimer - rawDt);
+    if (phaseTimer === 0) phaseCard.classList.add('hidden');
+  }
   if (cinematicTimer > 0) {
     cinematicTimer -= rawDt;
     const b = cinematicBoss;
@@ -1127,8 +1132,8 @@ requestAnimationFrame(animate);
       if (hero.isGrounded) {
         impact.y = world.getTerrainHeight(impact.x, impact.z);
         vfx.spawnShockwave(impact, 3.2, 0xd8ab69);
+        audio.playGroundStrike();
       }
-      audio.playStaffHit(true);
     }
     const lightContact = !hero.isHeavySlam && previousAttackTimer > 0.08 && hero.attackTimer < (circular ? 0.44 : 0.22);
     if (slamContact || lightContact) {
@@ -1195,7 +1200,7 @@ requestAnimationFrame(animate);
         bumpCombo();
         hitStopTimer = Math.max(hitStopTimer, hero.isHeavySlam ? 0.09 : 0.045);
         vfx.shakeIntensity = Math.max(vfx.shakeIntensity, hero.isHeavySlam ? 0.24 : 0.1);
-        if (!slamContact) audio.playStaffHit(false, hero.comboStep);
+        audio.playStaffHit(slamContact, hero.comboStep);
       }
     }
 

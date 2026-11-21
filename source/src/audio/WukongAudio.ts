@@ -172,20 +172,20 @@ export class WukongAudio {
     }).connect(this.hallReverb);
 
     const voiceMap: Record<string, string> = {
-      start: 'audio/voice-v2/start.wav',
-      combo: 'audio/voice-v2/combo.wav',
-      heavy: 'audio/voice-v2/heavy.wav',
-      dodge: 'audio/voice-v2/dodge.wav',
-      ding: 'audio/voice-v2/ding.wav',
-      fan: 'audio/voice-v2/fan.wav',
-      phase: 'audio/voice-v2/phase.wav',
-      victory: 'audio/voice-v2/victory.wav',
-      death: 'audio/voice-v2/death.wav',
-      choice: 'audio/voice-v2/choice.wav',
-      'ending-good': 'audio/voice-v2/ending-good.wav',
-      'ending-bad': 'audio/voice-v2/ending-bad.wav',
-      'boss-intro': 'audio/voice-v2/boss-intro.wav',
-      'low-hp': 'audio/voice-v2/low-hp.wav',
+      start: 'audio/voice-wukong/start.wav',
+      combo: 'audio/voice-wukong/combo.wav',
+      heavy: 'audio/voice-wukong/heavy.wav',
+      dodge: 'audio/voice-wukong/dodge.wav',
+      ding: 'audio/voice-wukong/ding.wav',
+      fan: 'audio/voice-wukong/fan.wav',
+      phase: 'audio/voice-wukong/phase.wav',
+      victory: 'audio/voice-wukong/victory.wav',
+      death: 'audio/voice-wukong/death.wav',
+      choice: 'audio/voice-wukong/choice.wav',
+      'ending-good': 'audio/voice-wukong/ending-good.wav',
+      'ending-bad': 'audio/voice-wukong/ending-bad.wav',
+      'boss-intro': 'audio/voice-wukong/boss-intro.wav',
+      'low-hp': 'audio/voice-wukong/low-hp.wav',
     };
     for (const [k, url] of Object.entries(voiceMap)) {
       this.voices[k] = new Tone.Player({ url, volume: 0 }).connect(this.master);
@@ -283,11 +283,12 @@ export class WukongAudio {
     return time;
   }
 
-  private playSfx(name: string, volume = -5): void {
+  private playSfx(name: string, volume = -5, rate = 1): void {
     if (this.muted) return;
     const p = this.sfxPlayers[name];
     if (!p || !p.loaded) return;
     try { p.stop(); } catch { /* not started */ }
+    p.playbackRate = rate;
     p.volume.value = volume;
     p.start(this.nextAudioTime('player:' + name));
   }
@@ -300,22 +301,22 @@ export class WukongAudio {
     this.whooshFilter.frequency.exponentialRampToValueAtTime(160, Tone.now() + 0.15);
     this.playSfx(comboIdx >= 2 ? 'whoosh_heavy' : 'whoosh_light', -7);
     this.whooshNoise.triggerAttackRelease('16n', this.nextAudioTime('whoosh'));
-    const notes = ['D6', 'F#6', 'A6'];
-    this.staffMetal.triggerAttackRelease(notes[comboIdx % 3], '32n', this.nextAudioTime('metal'), 0.28);
+
   }
 
-  public playStaffHit(heavy = false, comboStep = 0): void {
+  public playStaffHit(heavy = false, _comboStep = 0): void {
     if (!this.isReady || this.muted) return;
-    // Deep satisfying physical impact thud + warm jade/gold overtone
-    this.tangguDrum.triggerAttackRelease(heavy ? 'C1' : 'F#1', '8n', this.nextAudioTime('drum'), heavy ? 0.92 : 0.58);
-    this.playSfx(heavy ? 'impact_heavy' : 'impact', heavy ? -3 : -6);
-    this.impactNoise.triggerAttackRelease(heavy ? '4n' : '16n', this.nextAudioTime('impact'), heavy ? 0.9 : 0.45);
+    this.playSfx(heavy ? 'impact_heavy' : 'impact', heavy ? -3 : -5, heavy ? 0.94 : [1, 1.06, 0.96, 0.9][_comboStep % 4]);
     if (heavy) {
-      this.chimeHarmonic.triggerAttackRelease(['D4', 'A4', 'D5'], '2n', undefined, 0.45);
-    } else {
-      const note = ['D3', 'F3', 'A3', 'D4'][Math.max(0, comboStep - 1) % 4];
-      this.guqin.triggerAttackRelease(note, '16n', undefined, 0.32);
+      this.tangguDrum.triggerAttackRelease('C1', '16n', this.nextAudioTime('drum'), 0.42);
     }
+    this.impactNoise.triggerAttackRelease(heavy ? '16n' : '32n', this.nextAudioTime('impact'), heavy ? 0.32 : 0.17);
+
+  }
+
+  public playGroundStrike(): void {
+    if (!this.isReady || this.muted) return;
+    this.playSfx('slam', -6, 0.87);
   }
 
   public playDingShenSpell(): void {

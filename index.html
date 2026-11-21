@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>大圣破阵录 · WUKONG: CELESTIAL SHATTER | Aholo 3D AI Hackathon</title>
+    <title>大圣破阵录 · WUKONG: CELESTIAL SHATTER</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@500;700;900&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-u6YCepvY.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BILmrfbJ.css">
+    <script type="module" crossorigin src="./assets/index-BdkZKB8G.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-C0R28y09.css">
   </head>
   <body>
     <canvas id="game-canvas"></canvas>
@@ -21,7 +21,6 @@
     <div id="title-screen" class="title-screen">
       <div class="title-backdrop-glow"></div>
       <div class="title-card">
-        <div class="aholo-badge">2026 群核 Aholo 空间智能黑客松 · Lux3D 骨骼动作 + SpatialGen 3DGS 原生动作游戏</div>
         <h1 class="myth-logo">大圣破阵录</h1>
         <p class="myth-sub">WUKONG · CELESTIAL SHATTER</p>
         <p class="myth-poem">
@@ -29,16 +28,11 @@
           踏花果灵泉、扇八百里火焰、破南天凌霄妖阵！
         </p>
 
-        <div class="feature-pills">
-          <span>定身奇术 · 毫毛分身</span>
-          <span>芭蕉熄火 · 筋斗腾云</span>
-          <span>幻影闪身 · 蓄力劈棍</span>
-          <span>三回西游神话 Boss 战</span>
-        </div>
+
 
         <button id="btn-start-game" class="btn-gold-seal">披挂上阵 · 踏入西游</button>
         <div class="controls-mini">
-          WASD 移动 · 左键轻棍 · 右键重劈 · Shift 闪身 · 1–4 神通 · E 横扫 · G 天钟 · Q 锁定 · R 饮酒 · M 静音
+          WASD 移动 · 左键轻棍 · 右键重劈 · Shift 闪身 · 1–4 神通 · E 借形 · G 天钟 · Q 锁定 · R 饮酒 · M 静音
         </div>
       </div>
     </div>
@@ -87,14 +81,12 @@
       <!-- Center Combat Callout Toast (Perfect Dodge / Ding-Shen / Fire Extinguished) -->
       <div id="combat-toast" class="combat-toast"></div>
 
-      <div id="phase-card" class="phase-card hidden"><div class="phase-kicker">PHASE SHIFT</div><div id="phase-title" class="phase-title">法天象地</div><div id="phase-sub" class="phase-sub">妖王 · 二阶段</div></div>
+      <div id="phase-card" class="phase-card hidden"><div id="phase-title" class="phase-title">法天象地</div><div id="phase-sub" class="phase-sub">妖王 · 二阶段</div></div>
 
       <div id="boss-intro" class="boss-intro hidden">
-        <div class="bi-kicker">HUA GUO SHAN // BOSS ENCOUNTER</div>
         <div class="bi-rule"></div>
         <h1 id="bi-name" class="bi-name">混世魔先锋</h1>
         <p id="bi-title" class="bi-title">水帘洞妖统领</p>
-        <div class="bi-bottom">LUX3D ARENA // NO RETREAT</div>
       </div>
 
       <div id="hit-flash" class="hit-flash"></div>
@@ -207,11 +199,9 @@
     <!-- Pause / Settings -->
     <div id="pause-overlay" class="pause-overlay hidden">
       <div class="pause-card">
-        <div class="pause-kicker">PAUSED // SPIRIT SYNC INTERRUPTED</div>
         <h2 class="pause-title">暂停</h2>
-        <p class="pause-desc">灵脉同步已中断。调整后继续西行。</p>
         <div class="pause-actions">
-          <button id="btn-pause-resume" class="btn-gold-seal">继续 · RESUME</button>
+          <button id="btn-pause-resume" class="btn-gold-seal">继续</button>
           <button id="btn-pause-sound" class="btn-gold-seal alt">声音：开</button>
           <button id="btn-pause-quality" class="btn-gold-seal alt">画质：高</button>
           <button id="btn-pause-restart" class="btn-gold-seal alt">重开本回</button>
