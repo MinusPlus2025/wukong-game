@@ -1,5 +1,7 @@
-# 大圣破阵录 / WUKONG: CELESTIAL SHATTER
+# 大圣破阵录
 
-3D AI 花果山动作游戏 · Aholo Lux3D + SpatialGen + Tone.js。
+三回西游动作游戏。花果山、火焰山、南天门各有场景材质、配乐与环境音。
 
-WASD 移动 · 鼠标/方向观察 · 左键轻棍 · 右键重劈 · Shift 闪身 · 1/2/3/4 神通 · R 葫芦。
+- [游戏](https://minusplus2025.github.io/wukong-game)
+- [报告](https://minusplus2025.github.io/wukong-demo/wukong-report.pdf)
+- [源代码](https://github.com/MinusPlus2025/wukong-game/tree/main/source)

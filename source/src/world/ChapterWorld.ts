@@ -170,6 +170,38 @@ export class ChapterWorld {
     return t;
   }
 
+  private buildStonePaving(palace: boolean): void {
+    const pos:number[]=[], uv:number[]=[], indices:number[]=[], colors:number[]=[];
+    const cols=palace?14:4, rows=palace?22:16;
+    const width=palace?2.25:1.55, depth=palace?1.82:1.46;
+    for(let row=0;row<rows;row++) for(let col=0;col<cols;col++){
+      const z=17-row*depth;
+      const x=(col-(cols-1)/2+(row%2)*0.28)*width;
+      const noise=Math.sin(row*127.1+col*311.7)*43758.5453;
+      const vary=noise-Math.floor(noise), w=width/2-.014, d=depth/2-.016;
+      const chip=.035+vary*(palace?.045:.15);
+      const corners=[[-w+chip,-d],[w-chip,-d],[w,-d+chip],[w,d-chip],[w-chip,d],[-w+chip,d],[-w,d-chip],[-w,-d+chip]];
+      const base=pos.length/3, tone=(palace?.83:.63)+vary*.15;
+      for(let ring=0;ring<3;ring++) for(const [cx,cz] of corners){
+        const px=x+cx*(ring===2?.978:1), pz=z+cz*(ring===2?.978:1);
+        pos.push(px,this.getTerrainHeight(px,pz)+[-.035,.048,.074][ring]+vary*.008,pz);
+        uv.push(px*.34+vary*2,pz*.34+vary); colors.push(tone,tone*(palace?.99:.97),tone*(palace?.96:.91));
+      }
+      for(let r=0;r<2;r++)for(let i=0;i<8;i++){
+        const a=base+r*8+i,b=base+r*8+(i+1)%8;indices.push(a,a+8,b,b,a+8,b+8);
+      }
+      for(let i=1;i<7;i++)indices.push(base+16,base+17+i,base+16+i);
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+    geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geo.setIndex(indices);geo.computeVertexNormals();
+    const loader=new THREE.TextureLoader(), folder=palace?'marble':'volcanic';
+    const texture=(slot:string)=>{const t=loader.load('textures/'+folder+'/'+slot+'.jpg');t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=8;return t;};
+    const map=texture('diff');map.colorSpace=THREE.SRGBColorSpace;
+    const mesh=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({map,normalMap:texture('nor'),roughnessMap:texture('rough'),vertexColors:true,roughness:palace?.68:.88}));
+    mesh.receiveShadow=true;this.worldGroup.add(mesh);
+  }
+
   private makeArenaTexture(): THREE.CanvasTexture {
     const c = document.createElement('canvas');
     c.width = c.height = 512;
@@ -271,32 +303,7 @@ export class ChapterWorld {
     arenaDisc.receiveShadow = true;
     this.worldGroup.add(arenaDisc);
 
-    // Stone processional path from spawn to the boss altar.
-    if (config.index === 0) {
-      const pathTex = arenaTex.clone();
-      pathTex.wrapS = pathTex.wrapT = THREE.RepeatWrapping;
-      pathTex.repeat.set(2, 8);
-      pathTex.needsUpdate = true;
-      const pathGeo = new THREE.PlaneGeometry(7, 32, 4, 24);
-      pathGeo.rotateX(-Math.PI / 2);
-      const pp = pathGeo.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < pp.count; i++) {
-        const px = pp.getX(i), pz = pp.getZ(i) + 1;
-        pp.setY(i, this.getTerrainHeight(px, pz) + 0.065);
-      }
-      pp.needsUpdate = true;
-      pathGeo.computeVertexNormals();
-      const path = new THREE.Mesh(
-        pathGeo,
-        new THREE.MeshStandardMaterial({
-          map: pathTex, bumpMap: pathTex, bumpScale: 0.08,
-          color: 0xc2c9b8, roughness: 0.64, metalness: 0.07,
-        })
-      );
-      path.position.set(0, 0, 1);
-      path.receiveShadow = true;
-      this.worldGroup.add(path);
-    }
+    if (config.index !== 1) this.buildStonePaving(config.index === 2);
 
     const runeRing = new THREE.Mesh(
       new THREE.RingGeometry(10.6, 11.1, 64),
@@ -311,48 +318,35 @@ export class ChapterWorld {
     runeRing.position.set(0, arenaDisc.position.y + 0.16, -15);
     this.worldGroup.add(runeRing);
 
-    // Painterly grass cards: transparent blade texture, not cone spikes.
     if (config.index === 0) {
-      const gc = document.createElement('canvas');
-      gc.width = gc.height = 64;
-      const gx = gc.getContext('2d')!;
-      gx.clearRect(0, 0, 64, 64);
-      for (let b = 0; b < 7; b++) {
-        const bx = 8 + b * 7 + Math.random() * 3;
-        const grad = gx.createLinearGradient(0, 64, 0, 8);
-        grad.addColorStop(0, '#162d22');
-        grad.addColorStop(0.55, '#2c5638');
-        grad.addColorStop(1, '#4d7a45');
-        gx.strokeStyle = grad;
-        gx.lineWidth = 2.2 + Math.random() * 1.6;
-        gx.beginPath();
-        gx.moveTo(bx, 64);
-        gx.quadraticCurveTo(bx + (Math.random() - 0.5) * 10, 34, bx + (Math.random() - 0.5) * 16, 8 + Math.random() * 8);
-        gx.stroke();
+      // Taper and bend the leaves in three dimensions; the stone walk stays clear.
+      const vertices: number[] = [], leafColors: number[] = [];
+      for (let blade = 0; blade < 9; blade++) {
+        const angle = blade * 2.4, x = Math.cos(angle), z = Math.sin(angle);
+        const h = 0.17 + (blade % 4) * 0.055;
+        const base = new THREE.Vector3(x * 0.07, 0, z * 0.07);
+        const mid = new THREE.Vector3(x * 0.13, h * 0.7, z * 0.13);
+        const tip = new THREE.Vector3(x * 0.24, h, z * 0.24);
+        const w = new THREE.Vector3(-z * 0.019, 0, x * 0.019);
+        for (const [pt, offset, light] of [[base,-1,0.3],[base,1,0.3],[mid,0.6,0.8],[base,-1,0.3],[mid,0.6,0.8],[mid,-0.6,0.8],[mid,-0.6,0.8],[mid,0.6,0.8],[tip,0,1]] as const) {
+          vertices.push(pt.x+w.x*offset,pt.y,pt.z+w.z*offset);
+          leafColors.push(0.105*light,0.205*light,0.058*light);
+        }
       }
-      const gtex = new THREE.CanvasTexture(gc);
-      gtex.colorSpace = THREE.SRGBColorSpace;
-      const bladeGeo = new THREE.PlaneGeometry(0.34, 0.55);
-      bladeGeo.translate(0, 0.275, 0);
-      const bladeMat = new THREE.MeshStandardMaterial({
-        map: gtex, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide,
-        roughness: 0.92, metalness: 0,
-      });
-      const grass = new THREE.InstancedMesh(bladeGeo, bladeMat, 900);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices,3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(leafColors,3));
+      geo.computeVertexNormals();
+      const grass = new THREE.InstancedMesh(geo,new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:.86}),760);
       const dummy = new THREE.Object3D();
-      for (let i = 0; i < 900; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const r = 9.5 + Math.random() * 16;
-        const x = Math.cos(a) * r;
-        const z = Math.sin(a) * r;
-        dummy.position.set(x, this.getTerrainHeight(x, z) + 0.02, z);
-        dummy.rotation.set(0, Math.random() * Math.PI, 0);
-        const sc = 0.7 + Math.random() * 0.8;
-        dummy.scale.set(sc, sc * (0.8 + Math.random() * 0.55), sc);
-        dummy.updateMatrix();
-        grass.setMatrixAt(i, dummy.matrix);
+      for(let i=0;i<grass.count;i++){
+        const a=i*2.39996, r=8+17*Math.sqrt(((i*137)%761)/761);
+        let x=Math.cos(a)*r; const z=Math.sin(a)*r;
+        if(Math.abs(x)<3.65) x+=(x<0?-1:1)*3.75;
+        dummy.position.set(x,this.getTerrainHeight(x,z)-0.015,z);
+        dummy.rotation.y=a;dummy.scale.setScalar(0.85+0.5*((i*23)%41)/41);dummy.updateMatrix();
+        grass.setMatrixAt(i,dummy.matrix);
       }
-      grass.instanceMatrix.needsUpdate = true;
       this.worldGroup.add(grass);
     }
   }
@@ -691,22 +685,6 @@ export class ChapterWorld {
       this.worldGroup.add(post, cap, ember, pl);
     }
 
-    // Red war banners framing the approach.
-    const bannerMat = new THREE.MeshStandardMaterial({ color: 0x7a1c18, roughness: 0.8, side: THREE.DoubleSide });
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 2; i++) {
-        const x = side * (11 + i * 3.2);
-        const z = 2 - i * 9;
-        const y = this.getTerrainHeight(x, z);
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 5.2, 6), lanternMat);
-        pole.position.set(x, y + 2.6, z);
-        const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 3.1), bannerMat);
-        cloth.position.set(x + side * 0.62, y + 3.5, z);
-        cloth.rotation.y = side * Math.PI / 2;
-        this.worldGroup.add(pole, cloth);
-      }
-    }
-
     // Pale moon behind the waterfall / pillar.
     const moon = new THREE.Mesh(
       new THREE.CircleGeometry(5.2, 40),
@@ -765,39 +743,23 @@ export class ChapterWorld {
 
     if (gen !== this.generation) return;
     // Lava fissures and ash haze: break up the flat brown plane.
-    const lc = document.createElement('canvas');
-    lc.width = lc.height = 512;
-    const lx = lc.getContext('2d')!;
-    lx.clearRect(0, 0, 512, 512);
-    lx.lineCap = 'round';
-    for (let n = 0; n < 18; n++) {
-      let x = Math.random() * 512;
-      let y = Math.random() * 512;
-      lx.beginPath();
-      lx.moveTo(x, y);
-      for (let seg = 0; seg < 7; seg++) {
-        x += (Math.random() - 0.5) * 90;
-        y += (Math.random() - 0.5) * 90;
-        lx.lineTo(x, y);
+    // Cracked basalt with a narrow incandescent core, fitted to the terrain.
+    const vertices:number[]=[], colors:number[]=[], faces:number[]=[];
+    for(let seam=0;seam<14;seam++){
+      let x=(seam%2===0?-1:1)*(3+seam%6*2), z=13-(seam%5)*4;
+      for(let j=0;j<15;j++){
+        x+=Math.sin(seam*8.3+j*5.1)*.67;z-=.84;
+        const w=(.04+.095*Math.abs(Math.sin(j*.79+seam)))*Math.sin(Math.PI*(j+.15)/15);
+        const id=vertices.length/3;
+        for(const [dx,dy,r,g,b] of [[-2*w,.016,.055,.032,.025],[-w,.06,.17,.09,.046],[-.28*w,.029,1,.22,.018],[.22*w,.028,1,.39,.036],[w,.052,.18,.08,.036],[2*w,.015,.055,.032,.025]]){
+          vertices.push(x+dx,this.getTerrainHeight(x+dx,z)+dy,z);colors.push(r,g,b);
+        }
+        if(j>0)for(let k=0;k<5;k++)faces.push(id-6+k,id-5+k,id+k,id-5+k,id+1+k,id+k);
       }
-      lx.strokeStyle = 'rgba(255,90,18,0.85)';
-      lx.lineWidth = 2 + Math.random() * 5;
-      lx.shadowColor = '#ff4a10';
-      lx.shadowBlur = 14;
-      lx.stroke();
-      lx.strokeStyle = 'rgba(255,210,100,0.55)';
-      lx.lineWidth = 1;
-      lx.stroke();
     }
-    const lavaTex = new THREE.CanvasTexture(lc);
-    lavaTex.colorSpace = THREE.SRGBColorSpace;
-    const lava = new THREE.Mesh(
-      new THREE.PlaneGeometry(36, 38),
-      new THREE.MeshBasicMaterial({ map: lavaTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.7 })
-    );
-    lava.rotation.x = -Math.PI / 2;
-    lava.position.set(0, 0.055, -7);
-    this.worldGroup.add(lava);
+    const fissures=new THREE.BufferGeometry();fissures.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+    fissures.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));fissures.setIndex(faces);
+    this.worldGroup.add(new THREE.Mesh(fissures,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide})));
 
     const ac = document.createElement('canvas');
     ac.width = ac.height = 256;
@@ -880,32 +842,6 @@ export class ChapterWorld {
   }
 
   private buildCelestialGateBiome(): void {
-    const pc = document.createElement('canvas');
-    pc.width = pc.height = 512;
-    const px = pc.getContext('2d')!;
-    px.fillStyle = '#23344a'; px.fillRect(0, 0, 512, 512);
-    for (let gy = 0; gy < 8; gy++) {
-      for (let gx = 0; gx < 8; gx++) {
-        const v = 42 + Math.floor(Math.random() * 18);
-        px.fillStyle = `rgb(${v},${v + 18},${v + 30})`;
-        px.fillRect(gx * 64 + 2, gy * 64 + 2, 60, 60);
-        px.strokeStyle = 'rgba(180,220,230,0.12)'; px.lineWidth = 1;
-        px.strokeRect(gx * 64 + 2, gy * 64 + 2, 60, 60);
-      }
-    }
-    const pt = new THREE.CanvasTexture(pc);
-    pt.wrapS = pt.wrapT = THREE.RepeatWrapping;
-    pt.repeat.set(5, 5);
-    pt.colorSpace = THREE.SRGBColorSpace;
-    const plaza = new THREE.Mesh(
-      new THREE.PlaneGeometry(40, 42),
-      new THREE.MeshStandardMaterial({ map: pt, roughness: 0.72, metalness: 0.15 })
-    );
-    plaza.rotation.x = -Math.PI / 2;
-    plaza.position.set(0, 0.045, -8);
-    plaza.receiveShadow = true;
-    this.worldGroup.add(plaza);
-
     // Golden Jade Dragon Pillars & Celestial Cloud Sea flanking South Heaven Gate
     const jadeMat = new THREE.MeshStandardMaterial({
       color: 0xeee4cc,
