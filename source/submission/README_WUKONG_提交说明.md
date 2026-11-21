@@ -55,4 +55,4 @@ https://minusplus2025.github.io/wukong-game
 
 - 项目源代码：https://github.com/MinusPlus2025/wukong-game/tree/main/source
 
-三回使用分章天空与统一的材质光照。南天门以盘云烛龙守门，保留扇形龙息；角色有待机、游行、攻击与死亡动作。
+三回使用分章天空与统一的材质光照。南天门以盘云烛龙守门，半血后在原骨架上解盘腾起，再从龙口沿锁定方向施放扇形龙息。地面预警与伤害扇区从龙口的地面投影起算。
