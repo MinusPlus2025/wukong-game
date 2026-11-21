@@ -351,7 +351,7 @@ async function startChapter(idx: number): Promise<void> {
   cinematicTimer = 0;
 
   window.setTimeout(() => { if (generation !== chapterGeneration) return; showStory(`${cfg.code} · ${cfg.title}　|　妖王：${bossName}`, 3800); speak('boss-intro'); }, 1300);
-  window.setTimeout(() => { if (generation === chapterGeneration) audio.playBossRoar(); }, 1200);
+  window.setTimeout(() => { if (generation === chapterGeneration) audio.playChapterCue('arrival'); }, 1200);
 }
 
 // Combat Actions
@@ -1039,7 +1039,8 @@ function startPhaseCard(title: string, sub: string, boss: ActiveEnemy | null): v
   phaseTitle.textContent = title;
   phaseSub.textContent = sub;
   phaseCard.classList.remove('hidden');
-  audio.playBossRoar();
+  audio.playChapterCue('shift');
+  audio.setBossPhase(true);
   vfx.triggerPerfectDodgeSlowMo();
 }
 

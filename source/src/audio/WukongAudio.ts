@@ -215,21 +215,6 @@ export class WukongAudio {
       this.sfxPlayers[k] = new Tone.Player({ url, volume: -5 }).connect(contact ? this.master : this.effectsBus);
     }
 
-    // Original 64s battle loop synthesized for this project.
-    this.bgmPlayer = new Tone.Player({
-      url: 'audio/bgm/battle.mp3?v=3',
-      loop: true,
-      volume: -15,
-      fadeIn: 2.5,
-      fadeOut: 1.2,
-    }).connect(this.master);
-    // Do not block gameplay on buffer decoding; voices/BGM start when ready.
-    void Tone.loaded().then(() => {
-      if (this.bgmEnabled && this.bgmPlayer && this.bgmPlayer.state !== 'started') {
-        this.bgmPlayer.start();
-      }
-    }).catch(() => {});
-
     this.isReady = true;
     if (this.ambientPending >= 0) this.setAmbient(this.ambientPending);
 
@@ -400,21 +385,49 @@ export class WukongAudio {
     this.impactNoise.triggerAttackRelease('2n', this.nextAudioTime('impact'), 0.7);
   }
 
+  private scoreGeneration = 0;
+  private phaseLayer: Tone.Player | null = null;
+  private arrivalCue: Tone.Player | null = null;
+  private shiftCue: Tone.Player | null = null;
+  private pendingCue: 'arrival' | 'shift' | null = null;
+
+  public playChapterCue(kind: 'arrival' | 'shift'): void {
+    const player = kind === 'arrival' ? this.arrivalCue : this.shiftCue;
+    if (!player?.loaded) { this.pendingCue = kind; return; }
+    this.pendingCue = null;
+    if (this.muted) return;
+    player.stop();
+    player.start(this.nextAudioTime('chapter:' + kind));
+  }
+
   public setAmbient(index: number): void {
     if (!this.isReady) { this.ambientPending = index; return; }
-    if (this.ambientIndex === index && this.ambientPlayer?.state === 'started') return;
-    this.ambientPlayer?.stop();
-    this.ambientPlayer?.dispose();
-    this.ambientPlayer = null;
+    if (this.ambientIndex === index && this.bgmPlayer) return;
+    const generation = ++this.scoreGeneration;
     this.ambientIndex = index;
-    const names = ['forest', 'fire', 'heaven'];
-    const url = `audio/ambient/${names[index] ?? 'forest'}.mp3?v=3`;
-    const p = new Tone.Player({ url, loop: true, volume: -20, fadeIn: 2, fadeOut: 1 }).connect(this.master);
-    this.ambientPlayer = p;
-    const wanted = index;
-    void Tone.loaded().then(() => {
-      if (this.ambientIndex === wanted && this.ambientPlayer === p && !this.muted) p.start();
+    this.pendingCue = null;
+    for (const previous of [this.bgmPlayer, this.phaseLayer, this.ambientPlayer, this.arrivalCue, this.shiftCue]) {
+      if (previous) { previous.stop(); previous.dispose(); }
+    }
+    const chapter = ['forest', 'fire', 'heaven'][index];
+    const player = (loop: boolean, volume: number) => new Tone.Player({ loop, volume, fadeIn: loop ? 0.12 : 0.005, fadeOut: 0.05 });
+    const score = this.bgmPlayer = player(true, this.activeVoice ? -23 : -17).connect(this.master);
+    const phase = this.phaseLayer = player(true, this.phaseActive ? -17 : -70).connect(this.effectsBus);
+    const air = this.ambientPlayer = player(true, this.activeVoice ? -26 : -17).connect(this.master);
+    const arrival = this.arrivalCue = player(false, -12).connect(this.effectsBus);
+    const shift = this.shiftCue = player(false, -13).connect(this.effectsBus);
+    const load = (p: Tone.Player, part: string) => p.load('audio/chapters/' + chapter + '-' + part + '.mp3');
+    void Promise.all([load(score,'score'),load(phase,'phase')]).then(() => {
+      if (generation !== this.scoreGeneration || !this.bgmEnabled) return;
+      const time = Tone.now() + 0.04;
+      score.start(time); phase.start(time);
     }).catch(() => {});
+    void load(air,'air').then(() => { if (generation === this.scoreGeneration) air.start(); }).catch(() => {});
+    for (const [p, kind] of [[arrival,'arrival'],[shift,'shift']] as const) {
+      void load(p,kind).then(() => {
+        if (generation === this.scoreGeneration && this.pendingCue === kind) this.playChapterCue(kind);
+      }).catch(() => {});
+    }
   }
 
   public playVoice(name: string): number {
@@ -437,8 +450,8 @@ export class WukongAudio {
     this.voiceDuckTimer = window.setTimeout(() => {
       this.activeVoice = null;
       this.effectsBus.gain.rampTo(1, 0.24);
-      this.bgmPlayer?.volume.rampTo(this.inCombat ? (this.phaseActive ? -13 : -16) : -22, 0.6);
-      this.ambientPlayer?.volume.rampTo(-20, 0.6);
+      this.bgmPlayer?.volume.rampTo(this.inCombat ? (this.phaseActive ? -17 : -16) : -22, 0.6);
+      this.ambientPlayer?.volume.rampTo(-17, 0.6);
     }, duration * 1000 + 100);
     return duration;
   }
@@ -446,7 +459,7 @@ export class WukongAudio {
   public setCombat(active: boolean): void {
     if (this.inCombat === active) return;
     this.inCombat = active;
-    if (!this.activeVoice) this.bgmPlayer?.volume.rampTo(active ? (this.phaseActive ? -13 : -16) : -22, 1.2);
+    if (!this.activeVoice) this.bgmPlayer?.volume.rampTo(active ? (this.phaseActive ? -17 : -16) : -22, 1.2);
   }
 
   public playAttackCue(kind: 'dragon' | 'boss' | 'minion'): void {
@@ -463,7 +476,8 @@ export class WukongAudio {
     if (!this.isReady) return;
     Tone.getTransport().bpm.rampTo(on ? 118 : 104, 1.2);
     this.phaseActive = on;
-    if (!this.activeVoice) this.bgmPlayer?.volume.rampTo(this.inCombat ? (on ? -13 : -16) : -22, 1);
+    this.phaseLayer?.volume.rampTo(on ? -17 : -70, 0.55);
+    if (!this.activeVoice) this.bgmPlayer?.volume.rampTo(this.inCombat ? (on ? -17 : -16) : -22, 1);
   }
 
   public toggleMute(): boolean {
