@@ -286,6 +286,31 @@ export class ChapterWorld {
       terrainMat.roughness = config.index === 2 ? 0.5 : 0.84;
       terrainMat.metalness = config.index === 2 ? 0.12 : 0.02;
     }
+    if(config.index===2){
+      // Beyond the balustrade the stone terrace disappears into cloud banks.
+      // Shade the existing relief, preserving collisions and the clear combat floor.
+      terrainMat.onBeforeCompile=shader=>{
+        shader.vertexShader='varying vec3 courtPos;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n courtPos=position;');
+        shader.fragmentShader=`
+          varying vec3 courtPos;
+          float courtHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+          float courtNoise(vec2 p){
+            vec2 f=fract(p);f=f*f*(3.-2.*f);vec2 i=floor(p);
+            return mix(mix(courtHash(i),courtHash(i+vec2(1,0)),f.x),mix(courtHash(i+vec2(0,1)),courtHash(i+vec2(1)),f.x),f.y);
+          }
+          float courtCloud(vec2 p){return .52*courtNoise(p)+.28*courtNoise(2.11*p)+.14*courtNoise(4.3*p)+.06*courtNoise(9.1*p);}
+        `+shader.fragmentShader.replace('#include <opaque_fragment>',`
+          vec2 xz=courtPos.xz;
+          float outside=max(abs(xz.x)/15.,abs(xz.y+6.)/25.);
+          float billow=courtCloud(xz*.18+vec2(courtNoise(xz*.1),0.));
+          float vapor=smoothstep(1.,1.48,outside+.23*(billow-.5));
+          vec3 lightCloud=mix(vec3(.20,.28,.31),vec3(.77,.76,.66),smoothstep(.23,.74,billow));
+          outgoingLight=mix(outgoingLight,lightCloud,vapor);
+          #include <opaque_fragment>
+        `);
+      };
+    }
+
     const terrain = new THREE.Mesh(geo, terrainMat);
     terrain.receiveShadow = true;
     this.worldGroup.add(terrain);

@@ -76,11 +76,20 @@ export class DragonFlight {
     this.headMesh.scale.setScalar(sculptScale);
     this.head.add(this.headMesh);
     this.cloud=part(skin,cloud);
-    // Reconstruct the surface that the coiled body concealed.
-    const crown = new THREE.Mesh(new THREE.SphereGeometry(1,32,12),
-      new THREE.MeshStandardMaterial({color:0xc5b8aa,roughness:.97}));
-    crown.scale.set(.77,.14,.73); crown.position.y=-.7;
-    this.cloud.add(crown);
+    // Fill the previously occluded center with curls cut from the same cloud.
+    const curl:number[]=[];
+    const xyz=skin.geometry.getAttribute('position');
+    for(let i=0;i<cloud.length;i+=3){
+      const k=cloud[i];
+      if(xyz.getX(k)>.12 && xyz.getZ(k)>-.08)curl.push(cloud[i],cloud[i+1],cloud[i+2]);
+    }
+    const curlMesh=part(skin,curl);
+    for(let i=0;i<5;i++){
+      const m=i===0?curlMesh:curlMesh.clone();const a=i*Math.PI*2/5;
+      m.rotation.y=a;m.scale.set(.66,.55,.65);
+      m.position.set(-.16*Math.cos(a)-.15*Math.sin(a),-.22,.16*Math.sin(a)-.15*Math.cos(a));
+      this.cloud.add(m);
+    }
     this.group.add(this.cloud,this.head);
     this.body=buildFlightSpine(neck,this.coilLength,skin.material);
     this.group.add(this.body);root.add(this.group);this.group.visible=false;
