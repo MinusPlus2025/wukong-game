@@ -39,6 +39,16 @@ export class WukongController {
   public onNimbus = false;
 
   public comboStep = 0;
+  private chainRemaining = 0;
+
+  public resetAttackChain(): void {
+    this.chainRemaining = 0;
+    this.comboStep = 0;
+    this.attackTimer = 0;
+    this.isFinisher = false;
+    this.isHeavySlam = false;
+    this.struckTargets.clear();
+  }
   public isFinisher = false;
   public spinTimer = 0;
   public spinCooldown = 0;
@@ -379,9 +389,10 @@ export class WukongController {
 
   public startLightAttack(): boolean {
     if (this.attackTimer > (this.isFinisher ? 0.08 : 0.14) || this.dodgeTimer > 0) return false;
-    this.comboStep = (this.comboStep % 4) + 1;
+    this.comboStep = this.chainRemaining > 0 ? (this.comboStep % 4) + 1 : 1;
     this.isFinisher = this.comboStep === 4;
     this.attackTimer = this.isFinisher ? 0.52 : 0.36;
+    this.chainRemaining = this.attackTimer + 0.6;
     this.isHeavySlam = false;
     this.struckTargets.clear();
     (this.slashArc.material as THREE.MeshBasicMaterial).color.setHex(0xffdf7a);
@@ -402,6 +413,7 @@ export class WukongController {
     if (this.attackTimer > 0 || this.dodgeTimer > 0) return 0;
     const beans = Math.max(1, Math.floor(this.focusPoints / 100));
     this.focusPoints = Math.max(0, this.focusPoints - beans * 100);
+    this.chainRemaining = 0;
     this.attackTimer = 0.62;
     this.isHeavySlam = true;
     this.isFinisher = false;
@@ -499,6 +511,7 @@ export class WukongController {
     this.invulnTimer = Math.max(0, this.invulnTimer - dt);
     this.mana = Math.min(this.maxMana, this.mana + dt * 3.5);
 
+    this.chainRemaining = Math.max(0, this.chainRemaining - dt);
     for (const [bone, rest] of this.poseRest) bone.quaternion.copy(rest);
     this.poseRest.clear();
     if (this.mixer) this.mixer.update(dt);

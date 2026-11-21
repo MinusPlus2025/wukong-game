@@ -286,6 +286,8 @@ async function startChapter(idx: number): Promise<void> {
   modalOverlay.classList.add('hidden');
 
   // Reset Wukong vitals & position
+  hero.resetAttackChain();
+  lightBuffer = 0;
   hero.hp = hero.maxHp;
   hero.mana = hero.maxMana;
   hero.onNimbus = false;
@@ -355,11 +357,11 @@ async function startChapter(idx: number): Promise<void> {
 function performLightAttack(): void {
   if (!gameStarted || modalOpen) return;
   // Auto soft-face nearest enemy within 7m for snappy action feel
-  autoFaceNearestEnemy(7.5);
   if (!hero.startLightAttack()) {
     lightBuffer = 0.2;
     return;
   }
+  autoFaceNearestEnemy(7.5);
   lightBuffer = 0;
   audio.playLightSwing(hero.comboStep);
   const now = performance.now();
@@ -371,9 +373,10 @@ function performLightAttack(): void {
 
 function performHeavySlam(): void {
   if (!gameStarted || modalOpen) return;
-  autoFaceNearestEnemy(9.5);
   const beans = hero.startHeavyPillarSlam();
   if (beans > 0) {
+    autoFaceNearestEnemy(9.5);
+    lightBuffer = 0;
     heavySlamBeans = beans;
     audio.playLightSwing(2);
     if (beans >= 2) showToast(`棍势爆发 · ${beans}豆擎天重劈！`);
@@ -992,6 +995,8 @@ function respawnAtBoss(): void {
   modalOverlay.classList.add('hidden');
   modalOpen = false;
   gameStarted = true;
+  hero.resetAttackChain();
+  lightBuffer = 0;
   hero.hp = hero.maxHp;
   hero.mana = hero.maxMana;
   gourdCharges = 3;
@@ -1088,8 +1093,8 @@ requestAnimationFrame(animate);
   const dt = vfx.update(rawDt);
   lightBuffer = Math.max(0, lightBuffer - dt);
   if (lightBuffer > 0 && !modalOpen && gameStarted) {
-    autoFaceNearestEnemy(7.5);
     if (hero.startLightAttack()) {
+      autoFaceNearestEnemy(7.5);
       lightBuffer = 0;
       audio.playLightSwing(hero.comboStep);
     }
