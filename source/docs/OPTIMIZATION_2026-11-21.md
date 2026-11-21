@@ -33,3 +33,7 @@
 `npm ci` → `npm run build` → `npx vite preview --host 127.0.0.1 --port 5180 --outDir dist`。
 停止Ctrl+C；再次同命令重启。相对base保证GitHub项目页路径无需手改产物。
 源码src、素材public、依赖与锁文件均在原工程。无需生产Key；大SPZ仍停用。
+
+## 公网交付核验
+游戏实现提交5724b55，Pages任务44913598167成功；原URL 200并加载index-DeZQmXDA.js。公网开始事件至移动36ms（页面驻留4秒）；普通URL debug未定义、章节导航隐藏、无加载遮罩。性能模式刷新保留。最终报告提交bdddfd8，HTTP200，SHA256 79f56585851438b21101ef1b0bfb2be42f690778283d1377c48d5175bb801ab1 与本地一致。
+公网四次切关首末花果山110.06→109.78MiB，geometry84→84，texture69→69；火焰山一次采样geometry53→59，未形成持续增长结论，完整原始值保留。公网控制台无运行时异常，资源无404（favicon除外）。测试浏览器已关闭。

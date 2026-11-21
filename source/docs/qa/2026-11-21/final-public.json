@@ -1,0 +1,217 @@
+{
+  movementMs: 36,
+  initial: {
+    currentChapter: 0,
+    unlockedChapter: 0,
+    gameStarted: true,
+    chapterReady: true,
+    performanceMode: false
+  },
+  afterChoice: {
+    currentChapter: 1,
+    unlockedChapter: 1,
+    gameStarted: true,
+    chapterReady: true,
+    performanceMode: false
+  },
+  samples: [
+    {
+      chapter: 0,
+      heapMB: 110.0574369430542,
+      memory: {
+        geometries: 84,
+        textures: 69
+      },
+      fps: 122.49897917716116,
+      p95: 9.199999988079071,
+      max: 9.5,
+      long: [
+        {
+          start: 23383.80000001192,
+          duration: 88
+        },
+        {
+          start: 23646.5,
+          duration: 93
+        }
+      ],
+      clips: [
+        {
+          name: '巡山狼斥候',
+          idle: 'Idle',
+          move: 'Run',
+          attack: 'ZZAttack',
+          model: 1
+        },
+        {
+          name: '黑风刀妖',
+          idle: 'Idle',
+          move: 'Run',
+          attack: 'ZZAttack',
+          model: 1
+        },
+        {
+          name: '混世魔先锋',
+          idle: 'Idle',
+          move: undefined,
+          attack: 'ZAttack',
+          model: 1
+        }
+      ]
+    },
+    {
+      chapter: 1,
+      heapMB: 75.23177814483643,
+      memory: {
+        geometries: 53,
+        textures: 61
+      },
+      fps: 121.62162162162163,
+      p95: 9.099999964237213,
+      max: 9.300000011920929,
+      long: [
+        {
+          start: 30338,
+          duration: 92
+        }
+      ],
+      clips: [
+        {
+          name: '熔岩骸骨',
+          idle: 'SkeletonArmature|SkeletonArmature|Skeleton_Idle',
+          move: 'SkeletonArmature|SkeletonArmature|Skeleton_Running',
+          attack: 'SkeletonArmature|SkeletonArmature|Skeleton_Attack',
+          model: 1
+        },
+        {
+          name: '熔岩史莱姆',
+          idle: 'Armature|Armature|Slime_Idle',
+          move: 'Armature|Armature|Slime_Walk',
+          attack: 'Armature|Armature|Slime_Attack',
+          model: 1
+        },
+        {
+          name: '火焰山 · 牛魔王',
+          idle: 'animation_1',
+          move: 'animation_2',
+          attack: 'animation_3',
+          model: 1
+        }
+      ]
+    },
+    {
+      chapter: 2,
+      heapMB: 69.812087059021,
+      memory: {
+        geometries: 67,
+        textures: 53
+      },
+      fps: 121.44110106207613,
+      p95: 9.199999988079071,
+      max: 9.5,
+      long: [],
+      clips: [
+        {
+          name: '天关骸骨卫',
+          idle: 'SkeletonArmature|SkeletonArmature|Skeleton_Idle',
+          move: 'SkeletonArmature|SkeletonArmature|Skeleton_Running',
+          attack: 'SkeletonArmature|SkeletonArmature|Skeleton_Attack',
+          model: 1
+        },
+        {
+          name: '南天门 · 凌霄天龙',
+          idle: 'CharacterArmature|Flying_Idle',
+          move: 'CharacterArmature|Fast_Flying',
+          attack: 'CharacterArmature|Headbutt',
+          model: 1
+        }
+      ]
+    },
+    {
+      chapter: 1,
+      heapMB: 75.4329137802124,
+      memory: {
+        geometries: 59,
+        textures: 61
+      },
+      fps: 121.80267965305724,
+      p95: 9.199999988079071,
+      max: 9.300000011920929,
+      long: [
+        {
+          start: 43896,
+          duration: 103
+        }
+      ],
+      clips: [
+        {
+          name: '熔岩骸骨',
+          idle: 'SkeletonArmature|SkeletonArmature|Skeleton_Idle',
+          move: 'SkeletonArmature|SkeletonArmature|Skeleton_Running',
+          attack: 'SkeletonArmature|SkeletonArmature|Skeleton_Attack',
+          model: 1
+        },
+        {
+          name: '熔岩史莱姆',
+          idle: 'Armature|Armature|Slime_Idle',
+          move: 'Armature|Armature|Slime_Walk',
+          attack: 'Armature|Armature|Slime_Attack',
+          model: 1
+        },
+        {
+          name: '火焰山 · 牛魔王',
+          idle: 'animation_1',
+          move: 'animation_2',
+          attack: 'animation_3',
+          model: 1
+        }
+      ]
+    },
+    {
+      chapter: 0,
+      heapMB: 109.78235816955566,
+      memory: {
+        geometries: 84,
+        textures: 69
+      },
+      fps: 121.34286099696175,
+      p95: 9,
+      max: 9.299999952316284,
+      long: [
+        {
+          start: 50481.89999997616,
+          duration: 74
+        },
+        {
+          start: 50717.30000001192,
+          duration: 93
+        }
+      ],
+      clips: [
+        {
+          name: '巡山狼斥候',
+          idle: 'Idle',
+          move: 'Run',
+          attack: 'ZZAttack',
+          model: 1
+        },
+        {
+          name: '黑风刀妖',
+          idle: 'Idle',
+          move: 'Run',
+          attack: 'ZZAttack',
+          model: 1
+        },
+        {
+          name: '混世魔先锋',
+          idle: 'Idle',
+          move: undefined,
+          attack: 'ZAttack',
+          model: 1
+        }
+      ]
+    }
+  ],
+  errors: [],
+  failed: []
+}

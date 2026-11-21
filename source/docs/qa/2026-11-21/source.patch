@@ -869,7 +869,7 @@ diff -ru /tmp/wukong-original-src/vfx/CombatVFX.ts src/vfx/CombatVFX.ts
        (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.9 - k);
 diff -ru /tmp/wukong-original-src/world/ChapterWorld.ts src/world/ChapterWorld.ts
 --- /tmp/wukong-original-src/world/ChapterWorld.ts	2026-11-21 21:52:35
-+++ src/world/ChapterWorld.ts	2026-11-21 22:16:03
++++ src/world/ChapterWorld.ts	2026-11-21 22:26:44
 @@ -1,5 +1,6 @@
 +import { disposeObject } from '../utils/disposeObject';
  import * as THREE from 'three';
@@ -981,9 +981,9 @@ diff -ru /tmp/wukong-original-src/world/ChapterWorld.ts src/world/ChapterWorld.t
    private async loadHuaguoshanProps(loader: GLTFLoader, priorityOnly: boolean): Promise<void> {
      const gen = this.generation;
      const defs: Array<{ file: string; x: number; z: number; h: number }> = [
-+      { file: 'moss-rock', x: -10, z: -28, h: 8.5 },
-+      { file: 'moss-rock', x: 11, z: -28, h: 7.8 },
-+      { file: 'moss-rock', x: -19, z: -22, h: 6 },
++      { file: 'cliff-rock', x: -10, z: -28, h: 6.0 },
++      { file: 'cliff-rock', x: 11, z: -28, h: 6.0 },
++      { file: 'cliff-rock', x: -19, z: -22, h: 5.2 },
        { file: 'moss-rock', x: -14, z: -3, h: 2.8 },
        { file: 'moss-rock', x: 14, z: -5, h: 2.2 },
 -      { file: 'stone-lantern', x: -5.5, z: 2, h: 3.0 },

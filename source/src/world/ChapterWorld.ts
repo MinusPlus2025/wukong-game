@@ -449,9 +449,9 @@ export class ChapterWorld {
   private async loadHuaguoshanProps(loader: GLTFLoader, priorityOnly: boolean): Promise<void> {
     const gen = this.generation;
     const defs: Array<{ file: string; x: number; z: number; h: number }> = [
-      { file: 'moss-rock', x: -10, z: -28, h: 8.5 },
-      { file: 'moss-rock', x: 11, z: -28, h: 7.8 },
-      { file: 'moss-rock', x: -19, z: -22, h: 6 },
+      { file: 'cliff-rock', x: -10, z: -28, h: 6.0 },
+      { file: 'cliff-rock', x: 11, z: -28, h: 6.0 },
+      { file: 'cliff-rock', x: -19, z: -22, h: 5.2 },
       { file: 'moss-rock', x: -14, z: -3, h: 2.8 },
       { file: 'moss-rock', x: 14, z: -5, h: 2.2 },
       { file: 'stone-lantern', x: -6, z: 2, h: 1.65 },
