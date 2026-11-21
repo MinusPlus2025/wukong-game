@@ -520,6 +520,7 @@ function performParry(): void {
   if (broken) {
     const dmg = broken.spec.isBoss ? 210 : 260;
     enemies.applyDamage(broken, dmg);
+    audio.playSurface(broken.spec.surface, true);
     vfx.triggerHitJuice(broken.root.position.clone().add(new THREE.Vector3(0, 1.3, 0)), dmg, true, `处决 ${dmg}!`);
     vfx.spawnShockwave(broken.root.position, 6.5, 0xffd166);
     hitStopTimer = Math.max(hitStopTimer, 0.14);
@@ -787,10 +788,11 @@ const VOICE_TEXT: Record<string, string> = {
   'low-hp': '俺老孙，还撑得住……',
 };
 
-function speak(name: string): void {
+function speak(name: string): number {
   const duration = audio.playVoice(name);
   const text = VOICE_TEXT[name];
   if (text) showStory(text, Math.max(2200, duration * 1000 + 150));
+  return duration;
 }
 
 function showStory(text: string, ms = 4200): void {
@@ -1162,6 +1164,7 @@ requestAnimationFrame(animate);
         else hits = distance <= 3.65 + radius && along >= -(hero.comboStep === 1 ? 0.45 * distance : radius);
         if (hits && Math.abs(offset.y) < 3 + radius) {
           hero.struckTargets.add(e.root.id);
+          audio.playSurface(e.spec.surface, hero.isHeavySlam);
           landed = true;
           const baseDmg = Math.round(
             (hero.isHeavySlam ? 85 + heavySlamBeans * 58 : 34 + hero.comboStep * 9 + (hero.isFinisher ? 22 : 0)) * (1 + damageBonus) * (1 + Math.min(comboCount, 20) * 0.015) * (e.brokenTimer > 0 ? 2.2 : 1)
@@ -1259,8 +1262,11 @@ requestAnimationFrame(animate);
     // Spin sweep: hits every nearby enemy once.
     if (hero.spinTimer > 0.15 && !hero.spinHitDealt) {
       hero.spinHitDealt = true;
+      let spinConnected = false;
       for (const e of enemies.getAliveEnemies()) {
         if (e.root.position.distanceTo(hero.root.position) <= 4.8) {
+          spinConnected = true;
+          audio.playSurface(e.spec.surface, true);
           const dmg = 72;
           enemies.applyDamage(e, dmg, new THREE.Vector3(Math.sin(hero.yaw), 0, Math.cos(hero.yaw)));
           enemies.addPosture(e, 24);
@@ -1268,7 +1274,7 @@ requestAnimationFrame(animate);
         }
       }
       vfx.spawnShockwave(hero.root.position, 5.0, 0xffd166);
-      audio.playStaffHit(true);
+      if (spinConnected) audio.playStaffHit(true);
     }
 
     // 5. Update Enemies & Boss AI
@@ -1352,8 +1358,10 @@ requestAnimationFrame(animate);
     if (chapterReady && !chapterClearedTriggered && enemies.getAliveEnemies().length === 0) {
       chapterClearedTriggered = true;
       audio.playVictory();
-      speak('victory');
+      const victoryDuration = speak('victory');
+      const clearedGeneration = chapterGeneration;
       setTimeout(() => {
+        if (clearedGeneration !== chapterGeneration) return;
         const isFinal = currentChapter >= ACTIVE_CHAPTERS.length - 1;
         const rootLines = [
           '他倒下时，胸口有一根金色的刺——那是你的“怒”。',
@@ -1371,7 +1379,7 @@ requestAnimationFrame(animate);
           '吞噬 · 收下',
           () => resolveRoot('devour', isFinal)
         );
-      }, 900);
+      }, Math.max(900, victoryDuration * 1000 + 100));
     }
   }
 

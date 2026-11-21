@@ -7,6 +7,7 @@ export interface EnemySpawnSpec {
   atk: number;
   scale: number;
   pos: [number, number];
+  surface: 'hide' | 'bone' | 'gel' | 'bronze' | 'horn' | 'scale';
   modelCandidates: string[];
   color: number;
 }
@@ -59,6 +60,7 @@ export const WUKONG_CHAPTERS: ChapterConfig[] = [
         atk: 12,
         scale: 1.35,
         pos: [-6, 5],
+        surface: 'hide',
         modelCandidates: ['models/yaoguai-guard-rigged.glb', 'models/bullking-animated.glb'],
         color: 0x6f7d8c,
       },
@@ -70,6 +72,7 @@ export const WUKONG_CHAPTERS: ChapterConfig[] = [
         atk: 14,
         scale: 1.45,
         pos: [6, 3],
+        surface: 'hide',
         modelCandidates: ['models/yaoguai-guard-rigged.glb', 'models/bullking-animated.glb'],
         color: 0x7c6858,
       },
@@ -82,6 +85,7 @@ export const WUKONG_CHAPTERS: ChapterConfig[] = [
         atk: 24,
         scale: 2.65,
         pos: [0, -10],
+        surface: 'bronze',
         modelCandidates: ['models/taotie-boss-rigged.glb', 'models/taotie-boss.glb'],
         color: 0x4fc3a1,
       },
@@ -116,6 +120,7 @@ export const WUKONG_CHAPTERS: ChapterConfig[] = [
         atk: 17,
         scale: 1.55,
         pos: [-8, 5],
+        surface: 'bone',
         modelCandidates: ['models/skeleton-animated.glb', 'models/yaoguai-guard-rigged.glb'],
         color: 0xd95338,
       },
@@ -127,6 +132,7 @@ export const WUKONG_CHAPTERS: ChapterConfig[] = [
         atk: 18,
         scale: 1.35,
         pos: [8, 5],
+        surface: 'gel',
         modelCandidates: ['models/slime-animated.glb', 'models/yaoguai-guard-rigged.glb'],
         color: 0xe67332,
       },
@@ -139,6 +145,7 @@ export const WUKONG_CHAPTERS: ChapterConfig[] = [
         atk: 28,
         scale: 2.95,
         pos: [0, -13],
+        surface: 'horn',
         modelCandidates: ['models/bullking-animated.glb', 'models/taotie-boss.glb'],
         color: 0xff6433,
       },
@@ -173,6 +180,7 @@ export const WUKONG_CHAPTERS: ChapterConfig[] = [
         atk: 19,
         scale: 1.55,
         pos: [-9, -2],
+        surface: 'bone',
         modelCandidates: ['models/skeleton-animated.glb', 'models/yaoguai-guard-rigged.glb'],
         color: 0xe8c574,
       },
@@ -185,6 +193,7 @@ export const WUKONG_CHAPTERS: ChapterConfig[] = [
         atk: 34,
         scale: 3.6,
         pos: [0, -13],
+        surface: 'scale',
         modelCandidates: ['models/dragon-evolved.glb', 'models/zhulong-dragon-rigged.glb', 'models/taotie-boss.glb'],
         color: 0x7fd9ff,
       },

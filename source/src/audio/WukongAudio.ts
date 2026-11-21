@@ -1,3 +1,4 @@
+import type { EnemySpawnSpec } from '../data/ChaptersData';
 import * as Tone from 'tone';
 
 /**
@@ -173,19 +174,19 @@ export class WukongAudio {
 
     const voiceMap: Record<string, string> = {
       start: 'audio/staff-performance/start.wav',
-      combo: 'audio/voice-wukong/combo.wav',
+      combo: 'audio/battle-voices/combo.wav',
       heavy: 'audio/staff-performance/heavy.wav',
-      dodge: 'audio/voice-wukong/dodge.wav',
-      ding: 'audio/voice-wukong/ding.wav',
-      fan: 'audio/voice-wukong/fan.wav',
-      phase: 'audio/voice-wukong/phase.wav',
-      victory: 'audio/voice-wukong/victory.wav',
-      death: 'audio/voice-wukong/death.wav',
-      choice: 'audio/voice-wukong/choice.wav',
-      'ending-good': 'audio/voice-wukong/ending-good.wav',
-      'ending-bad': 'audio/voice-wukong/ending-bad.wav',
+      dodge: 'audio/battle-voices/dodge.wav',
+      ding: 'audio/battle-voices/ding.wav',
+      fan: 'audio/battle-voices/fan.wav',
+      phase: 'audio/battle-voices/phase.wav',
+      victory: 'audio/battle-voices/victory.wav',
+      death: 'audio/battle-voices/death.wav',
+      choice: 'audio/battle-voices/choice.wav',
+      'ending-good': 'audio/battle-voices/ending-good.wav',
+      'ending-bad': 'audio/battle-voices/ending-bad.wav',
       'boss-intro': 'audio/staff-performance/boss-intro.wav',
-      'low-hp': 'audio/voice-wukong/low-hp.wav',
+      'low-hp': 'audio/battle-voices/low-hp.wav',
     };
     for (const [k, url] of Object.entries(voiceMap)) {
       this.voices[k] = new Tone.Player({ url, volume: 0 }).connect(this.master);
@@ -203,6 +204,9 @@ export class WukongAudio {
       gong: 'audio/sfx/gong.wav',
       taiko: 'audio/sfx/taiko.wav',
     };
+    for (const surface of ['hide','bone','gel','bronze','horn','scale']) {
+      sfxMap[surface] = 'audio/battle-voices/' + surface + '.wav';
+    }
     for (const [k, url] of Object.entries(sfxMap)) {
       this.sfxPlayers[k] = new Tone.Player({ url, volume: -5 }).connect(this.master);
     }
@@ -316,6 +320,16 @@ export class WukongAudio {
     }
     this.impactNoise.triggerAttackRelease(heavy ? '16n' : '32n', this.nextAudioTime('impact'), heavy ? 0.32 : 0.17);
 
+  }
+
+  private readonly surfaceTimes = new Map<string, number>();
+
+  public playSurface(surface: EnemySpawnSpec['surface'], heavy: boolean): void {
+    if (!this.isReady || this.muted) return;
+    const now = Tone.now();
+    if (now - (this.surfaceTimes.get(surface) ?? -1) < 0.055) return;
+    this.surfaceTimes.set(surface, now);
+    this.playSfx(surface, heavy ? -6 : -9, heavy ? 0.9 : 1);
   }
 
   public playGroundStrike(): void {
