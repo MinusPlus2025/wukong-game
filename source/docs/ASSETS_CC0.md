@@ -6,6 +6,8 @@
 - Poly Haven `stone_fire_pit` — Flaming Mountain fire-pit / rock base (CC0)
 - Poly Haven `shrub_01`, `tree_stump_01` — forest near-ground vegetation/stumps (CC0)
 - Quaternius "Dragon Evolved" via Poly Pizza — rigged animated dragon, 8 clips (CC0)
+- Quaternius "LowPoly Animated Monsters" (Skeleton / Slime) — CC0, via HydeCo
+  材质修正：FBX 导出 alpha=0，运行时强制 opaque，避免只剩血条。
 
 Downloaded at 1K JPG (diffuse/normal/roughness/displacement) to keep browser upload cost low.
 No attribution required by CC0; recorded here for auditability.
