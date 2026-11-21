@@ -737,30 +737,6 @@ export class ChapterWorld {
       this.worldGroup.add(mesh);
     };
 
-    addInstanced(new THREE.DodecahedronGeometry(0.7, 0), new THREE.MeshStandardMaterial({ color: 0x1d3a28, roughness: 0.95 }), 30, () => {
-      const a = Math.random() * Math.PI * 2, r = 19 + Math.random() * 9;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      dummy.position.set(x, this.getTerrainHeight(x, z) + 0.35, z);
-      dummy.rotation.set(0, Math.random() * Math.PI, 0);
-      dummy.scale.set(0.35 + Math.random() * 0.35, 0.3 + Math.random() * 0.35, 0.35 + Math.random() * 0.35);
-    });
-
-    addInstanced(new THREE.DodecahedronGeometry(0.65, 0), new THREE.MeshStandardMaterial({ color: 0x394039, roughness: 0.82, metalness: 0.08 }), 18, () => {
-      const a = Math.random() * Math.PI * 2, r = 19 + Math.random() * 9;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      dummy.position.set(x, this.getTerrainHeight(x, z) + 0.25, z);
-      dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
-      dummy.scale.set(0.3 + Math.random() * 0.35, 0.25 + Math.random() * 0.35, 0.3 + Math.random() * 0.35);
-    });
-
-    addInstanced(new THREE.SphereGeometry(0.045, 6, 6), new THREE.MeshStandardMaterial({ color: 0x6f5642, roughness: 0.9 }), 90, () => {
-      const a = Math.random() * Math.PI * 2, r = 11.6 + Math.random() * 13;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      dummy.position.set(x, this.getTerrainHeight(x, z) + 0.18, z);
-      dummy.rotation.set(0, Math.random() * Math.PI, 0);
-      dummy.scale.setScalar(0.7 + Math.random() * 0.8);
-    });
-
     addInstanced(new THREE.PlaneGeometry(0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0xb06a52, transparent: true, opacity: 0.62, side: THREE.DoubleSide }), 260, () => {
       const a = Math.random() * Math.PI * 2, r = 8 + Math.random() * 16;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;

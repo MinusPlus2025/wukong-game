@@ -81,7 +81,7 @@ composer.addPass(new EffectPass(camera, bloom));
 // Shared PBR environment: gives stone/bronze props readable reflections without an HDR download.
 const pmrem = new THREE.PMREMGenerator(renderer);
 const room = new RoomEnvironment();
-scene.environment = pmrem.fromScene(room, 0.04).texture;
+scene.environment = pmrem.fromScene(room, 0.04, 0.1, 100, { size: 64 }).texture;
 room.dispose();
 pmrem.dispose();
 scene.environmentIntensity = 0.18;
@@ -1118,7 +1118,9 @@ requestAnimationFrame(animate);
 
       let landed = false;
       for (const e of enemies.getAliveEnemies()) {
-        if (e.root.position.distanceTo(strikeCenter) <= reach + e.spec.scale * 0.45) {
+        const offset = e.root.position.clone().sub(hero.root.position);
+        const behindSwing = !hero.isFinisher && offset.dot(fwd) < -0.35;
+        if (!behindSwing && e.root.position.distanceTo(strikeCenter) <= reach + e.spec.scale * 0.45) {
           landed = true;
           const baseDmg = Math.round(
             (hero.isHeavySlam ? 85 + heavySlamBeans * 58 : 34 + hero.comboStep * 9 + (hero.isFinisher ? 22 : 0)) * (1 + damageBonus) * (1 + Math.min(comboCount, 20) * 0.015) * (e.brokenTimer > 0 ? 2.2 : 1)
@@ -1158,7 +1160,7 @@ requestAnimationFrame(animate);
         hero.hitDealtThisSwing = true;
         hitStopTimer = Math.max(hitStopTimer, hero.isHeavySlam ? 0.09 : 0.045);
         vfx.shakeIntensity = Math.max(vfx.shakeIntensity, hero.isHeavySlam ? 0.24 : 0.1);
-        audio.playStaffHit(hero.isHeavySlam);
+        audio.playStaffHit(hero.isHeavySlam, hero.comboStep);
       }
     }
 

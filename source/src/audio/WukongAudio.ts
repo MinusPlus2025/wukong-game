@@ -304,7 +304,7 @@ export class WukongAudio {
     this.staffMetal.triggerAttackRelease(notes[comboIdx % 3], '32n', this.nextAudioTime('metal'), 0.28);
   }
 
-  public playStaffHit(heavy = false): void {
+  public playStaffHit(heavy = false, comboStep = 0): void {
     if (!this.isReady || this.muted) return;
     // Deep satisfying physical impact thud + warm jade/gold overtone
     this.tangguDrum.triggerAttackRelease(heavy ? 'C1' : 'F#1', '8n', this.nextAudioTime('drum'), heavy ? 0.92 : 0.58);
@@ -313,7 +313,8 @@ export class WukongAudio {
     if (heavy) {
       this.chimeHarmonic.triggerAttackRelease(['D4', 'A4', 'D5'], '2n', undefined, 0.45);
     } else {
-      this.guqin.triggerAttackRelease('A3', '16n', undefined, 0.32);
+      const note = ['D3', 'F3', 'A3', 'D4'][Math.max(0, comboStep - 1) % 4];
+      this.guqin.triggerAttackRelease(note, '16n', undefined, 0.32);
     }
   }
 
