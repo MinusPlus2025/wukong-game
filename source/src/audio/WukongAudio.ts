@@ -27,8 +27,15 @@ export class WukongAudio {
   private staffMetal!: Tone.Synth;
   private impactNoise!: Tone.NoiseSynth;
   private bossRoar!: Tone.MonoSynth;
+  private activeVoice: Tone.Player | null = null;
+  private voiceDuckTimer = 0;
+  private phaseActive = false;
+  private audioTimes = new Map<string, number>();
   private voices: Record<string, Tone.Player> = {};
   private bgmPlayer: Tone.Player | null = null;
+  private ambientPlayer: Tone.Player | null = null;
+  private ambientIndex = -1;
+  private ambientPending = -1;
   private sfxPlayers: Record<string, Tone.Player> = {};
 
   private recordDest: MediaStreamAudioDestinationNode | null = null;
@@ -52,8 +59,12 @@ export class WukongAudio {
     const rawCtx = Tone.getContext().rawContext as AudioContext;
     this.recordDest = rawCtx.createMediaStreamDestination();
 
-    this.master = new Tone.Gain(0.62).toDestination();
-    Tone.connect(this.master, this.recordDest);
+    this.master = new Tone.Gain(0.58);
+    this.master.connect(new Tone.Limiter(-1).toDestination());
+    // Recording and speakers share the same peak protection.
+    const recordLimiter = new Tone.Limiter(-1);
+    this.master.connect(recordLimiter);
+    Tone.connect(recordLimiter, this.recordDest);
 
     // Master analog warmth filter removes all harsh digital highs above 2.6 kHz
     this.warmthFilter = new Tone.Filter({
@@ -161,23 +172,23 @@ export class WukongAudio {
     }).connect(this.hallReverb);
 
     const voiceMap: Record<string, string> = {
-      start: 'audio/voice/start.wav',
-      combo: 'audio/voice/combo.wav',
-      heavy: 'audio/voice/heavy.wav',
-      dodge: 'audio/voice/dodge.wav',
-      ding: 'audio/voice/ding.wav',
-      fan: 'audio/voice/fan.wav',
-      phase: 'audio/voice/phase.wav',
-      victory: 'audio/voice/victory.wav',
-      death: 'audio/voice/death.wav',
-      choice: 'audio/voice/choice.wav',
-      'ending-good': 'audio/voice/ending-good.wav',
-      'ending-bad': 'audio/voice/ending-bad.wav',
-      'boss-intro': 'audio/voice/boss-intro.wav',
-      'low-hp': 'audio/voice/low-hp.wav',
+      start: 'audio/voice-v2/start.wav',
+      combo: 'audio/voice-v2/combo.wav',
+      heavy: 'audio/voice-v2/heavy.wav',
+      dodge: 'audio/voice-v2/dodge.wav',
+      ding: 'audio/voice-v2/ding.wav',
+      fan: 'audio/voice-v2/fan.wav',
+      phase: 'audio/voice-v2/phase.wav',
+      victory: 'audio/voice-v2/victory.wav',
+      death: 'audio/voice-v2/death.wav',
+      choice: 'audio/voice-v2/choice.wav',
+      'ending-good': 'audio/voice-v2/ending-good.wav',
+      'ending-bad': 'audio/voice-v2/ending-bad.wav',
+      'boss-intro': 'audio/voice-v2/boss-intro.wav',
+      'low-hp': 'audio/voice-v2/low-hp.wav',
     };
     for (const [k, url] of Object.entries(voiceMap)) {
-      this.voices[k] = new Tone.Player({ url, volume: 5 }).connect(this.master);
+      this.voices[k] = new Tone.Player({ url, volume: 0 }).connect(this.master);
     }
     const sfxMap: Record<string, string> = {
       whoosh_light: 'audio/sfx/whoosh_light.wav',
@@ -193,11 +204,11 @@ export class WukongAudio {
       this.sfxPlayers[k] = new Tone.Player({ url, volume: -5 }).connect(this.master);
     }
 
-    // Real recorded Eastern drum score (CC BY 4.0, Kevin MacLeod).
+    // Original 64s battle loop synthesized for this project.
     this.bgmPlayer = new Tone.Player({
-      url: 'audio/bgm/battle.mp3',
+      url: 'audio/bgm/battle.mp3?v=3',
       loop: true,
-      volume: -13,
+      volume: -15,
       fadeIn: 2.5,
       fadeOut: 1.2,
     }).connect(this.master);
@@ -207,6 +218,9 @@ export class WukongAudio {
         this.bgmPlayer.start();
       }
     }).catch(() => {});
+
+    this.isReady = true;
+    if (this.ambientPending >= 0) this.setAmbient(this.ambientPending);
 
     Tone.getTransport().bpm.value = 104;
 
@@ -256,10 +270,17 @@ export class WukongAudio {
 
     Tone.getTransport().start();
     this.isReady = true;
+    await Tone.loaded();
   }
 
   public getAudioStream(): MediaStream | null {
     return this.recordDest?.stream ?? null;
+  }
+
+  private nextAudioTime(channel: string): number {
+    const time = Math.max(Tone.now(), (this.audioTimes.get(channel) ?? 0) + 0.005);
+    this.audioTimes.set(channel, time);
+    return time;
   }
 
   private playSfx(name: string, volume = -5): void {
@@ -268,7 +289,7 @@ export class WukongAudio {
     if (!p || !p.loaded) return;
     try { p.stop(); } catch { /* not started */ }
     p.volume.value = volume;
-    p.start(Tone.now());
+    p.start(this.nextAudioTime('player:' + name));
   }
 
   public playLightSwing(comboIdx: number): void {
@@ -278,17 +299,17 @@ export class WukongAudio {
     this.whooshFilter.frequency.setValueAtTime(freqs[comboIdx % 3], Tone.now());
     this.whooshFilter.frequency.exponentialRampToValueAtTime(160, Tone.now() + 0.15);
     this.playSfx(comboIdx >= 2 ? 'whoosh_heavy' : 'whoosh_light', -7);
-    this.whooshNoise.triggerAttackRelease('16n');
+    this.whooshNoise.triggerAttackRelease('16n', this.nextAudioTime('whoosh'));
     const notes = ['D6', 'F#6', 'A6'];
-    this.staffMetal.triggerAttackRelease(notes[comboIdx % 3], '32n', undefined, 0.28);
+    this.staffMetal.triggerAttackRelease(notes[comboIdx % 3], '32n', this.nextAudioTime('metal'), 0.28);
   }
 
   public playStaffHit(heavy = false): void {
     if (!this.isReady || this.muted) return;
     // Deep satisfying physical impact thud + warm jade/gold overtone
-    this.tangguDrum.triggerAttackRelease(heavy ? 'C1' : 'F#1', '8n', undefined, heavy ? 0.92 : 0.58);
+    this.tangguDrum.triggerAttackRelease(heavy ? 'C1' : 'F#1', '8n', this.nextAudioTime('drum'), heavy ? 0.92 : 0.58);
     this.playSfx(heavy ? 'impact_heavy' : 'impact', heavy ? -3 : -6);
-    this.impactNoise.triggerAttackRelease(heavy ? '4n' : '16n', undefined, heavy ? 0.9 : 0.45);
+    this.impactNoise.triggerAttackRelease(heavy ? '4n' : '16n', this.nextAudioTime('impact'), heavy ? 0.9 : 0.45);
     if (heavy) {
       this.chimeHarmonic.triggerAttackRelease(['D4', 'A4', 'D5'], '2n', undefined, 0.45);
     } else {
@@ -301,7 +322,7 @@ export class WukongAudio {
     // Sacred golden singing bowl chord ("定!")
     this.playSfx('gong', -8);
     this.chimeHarmonic.triggerAttackRelease(['D5', 'A5', 'F#6'], '1n', undefined, 0.62);
-    this.tangguDrum.triggerAttackRelease('D1', '4n', undefined, 0.55);
+    this.tangguDrum.triggerAttackRelease('D1', '4n', this.nextAudioTime('drum'), 0.55);
   }
 
   public playCloneSpell(): void {
@@ -318,7 +339,7 @@ export class WukongAudio {
     this.whooshFilter.frequency.setValueAtTime(680, Tone.now());
     this.whooshFilter.frequency.exponentialRampToValueAtTime(140, Tone.now() + 0.55);
     this.playSfx('whoosh_heavy', -6);
-    this.whooshNoise.triggerAttackRelease('2n');
+    this.whooshNoise.triggerAttackRelease('2n', this.nextAudioTime('whoosh'));
     this.chimeHarmonic.triggerAttackRelease(['E4', 'B4', 'F#5'], '2n', undefined, 0.42);
   }
 
@@ -331,7 +352,7 @@ export class WukongAudio {
   public playVictory(): void {
     if (!this.isReady || this.muted) return;
     this.playSfx('gong', -4);
-    this.tangguDrum.triggerAttackRelease('D1', '1n', undefined, 0.8);
+    this.tangguDrum.triggerAttackRelease('D1', '1n', this.nextAudioTime('drum'), 0.8);
     ['D4', 'E4', 'F#4', 'A4', 'B4', 'D5'].forEach((n, i) => {
       setTimeout(() => {
         if (!this.muted) this.guqin.triggerAttackRelease(n, '1n', undefined, 0.52);
@@ -344,38 +365,80 @@ export class WukongAudio {
     this.playSfx('whoosh_light', -8);
     this.whooshFilter.frequency.setValueAtTime(980, Tone.now());
     this.whooshFilter.frequency.exponentialRampToValueAtTime(220, Tone.now() + 0.22);
-    this.whooshNoise.triggerAttackRelease('32n');
+    this.whooshNoise.triggerAttackRelease('32n', this.nextAudioTime('whoosh'));
   }
 
   public playBossRoar(): void {
     if (!this.isReady || this.muted) return;
     this.playSfx('slam', -5);
-    this.bossRoar.triggerAttackRelease('C2', '2n', undefined, 0.8);
-    this.tangguDrum.triggerAttackRelease('C1', '2n', undefined, 0.9);
-    this.impactNoise.triggerAttackRelease('2n', undefined, 0.7);
+    this.bossRoar.triggerAttackRelease('C2', '2n', this.nextAudioTime('roar'), 0.8);
+    this.tangguDrum.triggerAttackRelease('C1', '2n', this.nextAudioTime('drum'), 0.9);
+    this.impactNoise.triggerAttackRelease('2n', this.nextAudioTime('impact'), 0.7);
   }
 
-  public playVoice(name: string): void {
-    if (!this.isReady || this.muted) return;
+  public setAmbient(index: number): void {
+    if (!this.isReady) { this.ambientPending = index; return; }
+    if (this.ambientIndex === index && this.ambientPlayer?.state === 'started') return;
+    this.ambientPlayer?.stop();
+    this.ambientPlayer?.dispose();
+    this.ambientPlayer = null;
+    this.ambientIndex = index;
+    const names = ['forest', 'fire', 'heaven'];
+    const url = `audio/ambient/${names[index] ?? 'forest'}.mp3?v=3`;
+    const p = new Tone.Player({ url, loop: true, volume: -20, fadeIn: 2, fadeOut: 1 }).connect(this.master);
+    this.ambientPlayer = p;
+    const wanted = index;
+    void Tone.loaded().then(() => {
+      if (this.ambientIndex === wanted && this.ambientPlayer === p && !this.muted) p.start();
+    }).catch(() => {});
+  }
+
+  public playVoice(name: string): number {
+    if (!this.isReady || this.muted) return 0;
     const p = this.voices[name];
-    if (!p || !p.loaded) return;
-    try { p.stop(); } catch { /* not started */ }
-    p.start(Tone.now());
-    if (this.bgmPlayer) {
-      this.bgmPlayer.volume.rampTo(-19, 0.12);
-      window.setTimeout(() => this.bgmPlayer?.volume.rampTo(-13, 0.6), 1800);
-    }
+    if (!p || !p.loaded) return 0;
+    // One dialogue lane: a new subtitle must never accompany two overlapping lines.
+    this.activeVoice?.stop();
+    this.activeVoice = p;
+    window.clearTimeout(this.voiceDuckTimer);
+    p.start(this.nextAudioTime('player:' + name));
+    const duration = p.buffer.duration / p.playbackRate;
+    this.bgmPlayer?.volume.rampTo(-23, 0.06);
+    this.ambientPlayer?.volume.rampTo(-26, 0.06);
+    this.voiceDuckTimer = window.setTimeout(() => {
+      this.activeVoice = null;
+      this.bgmPlayer?.volume.rampTo(this.inCombat ? (this.phaseActive ? -13 : -16) : -22, 0.6);
+      this.ambientPlayer?.volume.rampTo(-20, 0.6);
+    }, duration * 1000 + 100);
+    return duration;
+  }
+
+  public setCombat(active: boolean): void {
+    if (this.inCombat === active) return;
+    this.inCombat = active;
+    if (!this.activeVoice) this.bgmPlayer?.volume.rampTo(active ? (this.phaseActive ? -13 : -16) : -22, 1.2);
+  }
+
+  public playAttackCue(kind: 'dragon' | 'boss' | 'minion'): void {
+    if (!this.isReady || this.muted) return;
+    this.staffMetal.triggerAttackRelease(kind === 'dragon' ? 'D3' : kind === 'boss' ? 'A2' : 'A4', '16n', this.nextAudioTime('metal'), 0.22);
+  }
+
+  public playEnemyImpact(boss: boolean): void {
+    if (!this.isReady || this.muted) return;
+    this.playSfx(boss ? 'slam' : 'whoosh_light', boss ? -10 : -14);
   }
 
   public setBossPhase(on: boolean): void {
     if (!this.isReady) return;
     Tone.getTransport().bpm.rampTo(on ? 118 : 104, 1.2);
-    if (this.bgmPlayer) this.bgmPlayer.playbackRate = on ? 1.055 : 1;
+    this.phaseActive = on;
+    if (!this.activeVoice) this.bgmPlayer?.volume.rampTo(this.inCombat ? (on ? -13 : -16) : -22, 1);
   }
 
   public toggleMute(): boolean {
     this.muted = !this.muted;
-    if (this.isReady) this.master.gain.rampTo(this.muted ? 0 : 0.62, 0.15);
+    if (this.isReady) this.master.gain.rampTo(this.muted ? 0 : 0.58, 0.15);
     return this.muted;
   }
 }

@@ -1,6 +1,7 @@
+import { modelBounds } from '../utils/modelBounds';
+import { disposeObject } from '../utils/disposeObject';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { EnemySpawnSpec } from '../data/ChaptersData';
 
 export interface ActiveEnemy {
@@ -17,6 +18,9 @@ export interface ActiveEnemy {
   phase2: boolean;
   frozenTimer: number;
   windUpTimer: number;
+  windUpDuration: number;
+  recoveryTimer: number;
+  attackYaw: number;
   attackCooldown: number;
   hitFlashTimer: number;
   staggerTimer: number;
@@ -26,11 +30,19 @@ export interface ActiveEnemy {
   phase3: boolean;
   pattern: number;
   vel: THREE.Vector3;
+  undulate: boolean;
+  proceduralBoss: boolean;
+  dragonUniforms: Array<{ value: number }>;
+  dragonAttackUniforms: Array<{ value: number }>;
   dead: boolean;
   deathTimer: number;
   mixer: THREE.AnimationMixer | null;
   actions: THREE.AnimationAction[];
   activeClipIdx: number;
+  idleClipIdx: number;
+  attackClipIdx: number;
+  moveClipIdx: number;
+  deathClipIdx: number;
 }
 
 export interface EnemyHitPlayerEvent {
@@ -51,6 +63,9 @@ export interface EnemyHitPlayerEvent {
  */
 export class EnemyManager {
   public enemies: ActiveEnemy[] = [];
+  private pending = new Set<Promise<void>>();
+  private generation = 0;
+  private breathFx: Array<{ mesh: THREE.Mesh; life: number }> = [];
   private hpOverlay: HTMLDivElement;
 
   constructor(private scene: THREE.Scene, private camera: THREE.PerspectiveCamera) {
@@ -60,11 +75,23 @@ export class EnemyManager {
   }
 
   public clearAll(): void {
+    this.generation += 1;
+    const mats = new Set<THREE.Material>();
+    const geos = new Set<THREE.BufferGeometry>();
+    const texs = new Set<THREE.Texture>();
     for (const e of this.enemies) {
       this.scene.remove(e.root);
+      e.mixer?.stopAllAction();
+      if (e.mixer) e.mixer.uncacheRoot(e.mixer.getRoot());
+      e.actions = [];
+      e.mixer = null;
+      disposeObject(e.root, mats, geos, texs);
       e.hpBarWrap.remove();
     }
+    for (const fx of this.breathFx) { this.scene.remove(fx.mesh); fx.mesh.geometry.dispose(); (fx.mesh.material as THREE.Material).dispose(); }
+    this.breathFx = [];
     this.enemies = [];
+    this.pending.clear();
   }
 
   public async spawnChapterEnemies(
@@ -74,6 +101,7 @@ export class EnemyManager {
   ): Promise<void> {
     this.clearAll();
 
+    const gen = this.generation;
     for (const spec of specs) {
       const root = new THREE.Group();
       const y = terrainHeightFn(spec.pos[0], spec.pos[1]);
@@ -85,7 +113,7 @@ export class EnemyManager {
       // Crimson attack telegraph ring on ground (warns player to press Shift!)
       const telegraphRadius = spec.isBoss ? 4.4 : 2.5;
       const telegraphRing = new THREE.Mesh(
-        new THREE.RingGeometry(0.35, telegraphRadius, 40),
+        new THREE.RingGeometry(telegraphRadius * 0.62, telegraphRadius, 40),
         new THREE.MeshBasicMaterial({
           color: 0xff3b28,
           side: THREE.DoubleSide,
@@ -133,6 +161,9 @@ export class EnemyManager {
         phase2: false,
         frozenTimer: 0,
         windUpTimer: 0,
+        windUpDuration: 0,
+        recoveryTimer: 0,
+        attackYaw: 0,
         attackCooldown: 1.4 + Math.random() * 0.8,
         hitFlashTimer: 0,
         staggerTimer: 0,
@@ -142,30 +173,43 @@ export class EnemyManager {
         phase3: false,
         pattern: 0,
         vel: new THREE.Vector3(),
+        undulate: false,
+        proceduralBoss: false,
+        dragonUniforms: [],
+        dragonAttackUniforms: [],
         dead: false,
         deathTimer: 0,
         mixer: null,
         actions: [],
         activeClipIdx: -1,
+        idleClipIdx: -1,
+        attackClipIdx: -1,
+        moveClipIdx: -1,
+        deathClipIdx: -1,
       };
       this.enemies.push(enemy);
 
       // Load Aholo GLB asynchronously so chapter starts instantly
-      this.populateEnemyMesh(enemy, loader);
+      this.pending.add(this.populateEnemyMesh(enemy, loader, gen));
     }
   }
 
-  private async populateEnemyMesh(enemy: ActiveEnemy, loader: GLTFLoader): Promise<void> {
+  public async ready(): Promise<void> {
+    await Promise.allSettled([...this.pending]);
+  }
+
+  private async populateEnemyMesh(enemy: ActiveEnemy, loader: GLTFLoader, gen: number): Promise<void> {
     const candidates = [...enemy.spec.modelCandidates, 'models/baize-beast.glb'];
     for (const url of candidates) {
       try {
         const head = await fetch(url, { method: 'HEAD' });
         if (!head.ok || (head.headers.get('content-type') || '').includes('text/html')) continue;
         const gltf = await loader.loadAsync(url);
-        if (enemy.dead) return;
+        if (enemy.dead || gen !== this.generation) { disposeObject(gltf.scene); return; }
 
-        const m = SkeletonUtils.clone(gltf.scene);
-        const box = new THREE.Box3().setFromObject(m);
+        const m = gltf.scene;
+        // Armature/empty nodes can inflate setFromObject massively. Measure visible mesh geometry only.
+        const box = modelBounds(m, gltf.animations);
         const sz = new THREE.Vector3();
         const ctr = new THREE.Vector3();
         box.getSize(sz);
@@ -179,25 +223,80 @@ export class EnemyManager {
           if ((obj as THREE.Mesh).isMesh) {
             obj.castShadow = true;
             obj.receiveShadow = true;
+            obj.frustumCulled = false;
+            const baseMat = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
+            if (baseMat) {
+              baseMat.side = THREE.DoubleSide;
+              baseMat.transparent = false;
+              baseMat.opacity = 1;
+              baseMat.alphaTest = 0;
+              baseMat.depthWrite = true;
+            }
             if (!enemy.spec.isBoss) {
               const mat = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
               if (mat && mat.color) {
-                const clone = mat.clone();
+                const clone = mat;
                 clone.color.multiplyScalar(0.62);
                 clone.emissive = new THREE.Color(0x1a0d08);
                 clone.emissiveIntensity = 0.18;
+                clone.transparent = false;
+                clone.opacity = 1;
+                clone.alphaTest = 0;
+                clone.depthWrite = true;
                 (obj as THREE.Mesh).material = clone;
               }
             }
           }
         });
+        m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { const mats = (Array.isArray((o as THREE.Mesh).material) ? (o as THREE.Mesh).material : [(o as THREE.Mesh).material]) as THREE.Material[]; for (const raw of mats) { const mat = raw as THREE.MeshStandardMaterial; if (mat?.map) { mat.map.anisotropy = 8; mat.map.needsUpdate = true; } } } });
         enemy.modelWrap.clear();
         enemy.modelWrap.add(m);
 
         if (gltf.animations && gltf.animations.length > 0) {
           enemy.mixer = new THREE.AnimationMixer(m);
           enemy.actions = gltf.animations.map((c) => enemy.mixer!.clipAction(c));
-          this.playEnemyClip(enemy, 0);
+          const find = (re: RegExp) => gltf.animations.findIndex((c) => re.test(c.name));
+          enemy.idleClipIdx = find(/idle/i);
+          enemy.attackClipIdx = find(/headbutt|punch|bite|attack|claw|hit/i);
+          enemy.moveClipIdx = find(/run|walk|fast_flying/i);
+          if (enemy.moveClipIdx < 0) enemy.moveClipIdx = find(/^(flying|fly)$/i);
+          enemy.deathClipIdx = find(/death/i);
+          // Retargeted bull clips have generic names. Pose inspection: 1 idle, 2 run,
+          // 3 short strike; keep this mapping specific to this asset, never a global fallback.
+          if (url === 'models/bullking-animated.glb') {
+            enemy.idleClipIdx = find(/^animation_1$/);
+            enemy.moveClipIdx = find(/^animation_2$/);
+            enemy.attackClipIdx = find(/^animation_3$/);
+          }
+          this.playEnemyClip(enemy, enemy.idleClipIdx);
+        } else if (enemy.spec.isBoss) {
+          enemy.proceduralBoss = true;
+          if (enemy.spec.modelCandidates.some((u) => u.includes('zhulong'))) enemy.undulate = true;
+          m.traverse((o) => {
+            if (!(o as THREE.Mesh).isMesh) return;
+            const mats = (Array.isArray((o as THREE.Mesh).material) ? (o as THREE.Mesh).material : [(o as THREE.Mesh).material]) as THREE.Material[];
+            for (const raw of mats) {
+              const mat = raw as THREE.MeshStandardMaterial;
+              if (!mat || !mat.isMeshStandardMaterial) continue;
+              const u = { value: 0 };
+              const atk = { value: 0 };
+              enemy.dragonUniforms.push(u);
+              enemy.dragonAttackUniforms.push(atk);
+              mat.onBeforeCompile = (shader) => {
+                shader.uniforms.uDragonTime = u;
+                shader.uniforms.uDragonAttack = atk;
+                shader.vertexShader = 'uniform float uDragonTime;\nuniform float uDragonAttack;\n' + shader.vertexShader.replace(
+                  '#include <begin_vertex>',
+                  `#include <begin_vertex>
+                   float wave = sin(position.y * 1.7 - uDragonTime * 2.2) * 0.10;
+                   transformed.x += wave;
+                   transformed.z += cos(position.y * 1.3 + uDragonTime * 1.6) * 0.08;
+                   transformed.z += uDragonAttack * smoothstep(0.0, 0.9, position.y) * 0.45;`
+                );
+              };
+              mat.needsUpdate = true;
+            }
+          });
         }
         return;
       } catch {
@@ -224,7 +323,9 @@ export class EnemyManager {
 
   private playEnemyClip(e: ActiveEnemy, idx: number): void {
     if (!e.mixer || e.actions.length === 0) return;
-    const safe = Math.min(idx, e.actions.length - 1);
+    // Missing clips leave the current pose; never substitute Death/Hit by array order.
+    const safe = idx >= 0 ? idx : e.idleClipIdx;
+    if (safe < 0 || safe >= e.actions.length || safe === e.deathClipIdx) return;
     if (e.activeClipIdx === safe) return;
     e.actions[safe].reset().fadeIn(0.16).play();
     if (e.activeClipIdx >= 0 && e.actions[e.activeClipIdx]) {
@@ -239,6 +340,22 @@ export class EnemyManager {
 
   public getActiveBoss(): ActiveEnemy | null {
     return this.enemies.find((e) => e.spec.isBoss && !e.dead) ?? null;
+  }
+
+  private spawnDragonBreath(e: ActiveEnemy): void {
+    const fwd = new THREE.Vector3(Math.sin(e.root.rotation.y), 0, Math.cos(e.root.rotation.y));
+    const geo = new THREE.CylinderGeometry(0.35, 4.2, 10, 20, 1, true);
+    geo.rotateX(Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xff6a1a, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const cone = new THREE.Mesh(geo, mat);
+    cone.position.copy(e.root.position).addScaledVector(fwd, 4.8);
+    cone.position.y += 1.5;
+    cone.rotation.y = e.root.rotation.y + Math.PI;
+    this.scene.add(cone);
+    this.breathFx.push({ mesh: cone, life: 0.45 });
   }
 
   public isAnyAttackImminentNear(pos: THREE.Vector3, radius = 6.2): boolean {
@@ -287,7 +404,15 @@ export class EnemyManager {
 
     if (enemy.hp <= 0) {
       enemy.dead = true;
-      enemy.deathTimer = 0.8;
+      enemy.deathTimer = 1.2;
+      if (enemy.deathClipIdx >= 0 && enemy.actions[enemy.deathClipIdx]) {
+        enemy.actions.forEach((a) => a.stop());
+        const death = enemy.actions[enemy.deathClipIdx];
+        death.setLoop(THREE.LoopOnce, 1);
+        death.clampWhenFinished = true;
+        death.reset().fadeIn(0.1).play();
+        enemy.activeClipIdx = enemy.deathClipIdx;
+      }
       (enemy.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
       (enemy.sealRing.material as THREE.MeshBasicMaterial).opacity = 0;
       enemy.hpBarWrap.style.opacity = '0';
@@ -347,16 +472,28 @@ export class EnemyManager {
     playerPos: THREE.Vector3,
     terrainHeightFn: (x: number, z: number) => number,
     onHitPlayer: (ev: EnemyHitPlayerEvent) => void,
-    resolveCollision?: (pos: THREE.Vector3) => void
+    resolveCollision?: (pos: THREE.Vector3) => void,
+    onAttack?: (enemy: ActiveEnemy, stage: 'tell' | 'impact') => void
   ): boolean {
+    for (let i = this.breathFx.length - 1; i >= 0; i--) {
+      const fx = this.breathFx[i];
+      fx.life -= dt;
+      if (fx.life <= 0) { fx.mesh.removeFromParent(); disposeObject(fx.mesh); this.breathFx.splice(i, 1); }
+      else (fx.mesh.material as THREE.MeshBasicMaterial).opacity = 0.34 * fx.life / 0.45;
+    }
     let anyAggro = false;
 
     for (const e of this.enemies) {
       if (e.dead) {
         if (e.deathTimer > 0) {
           e.deathTimer -= dt;
-          e.modelWrap.scale.multiplyScalar(0.9);
-          e.root.position.y -= dt * 1.4;
+          if (e.mixer) e.mixer.update(dt * 0.9);
+          if (e.deathClipIdx < 0) {
+            e.modelWrap.scale.multiplyScalar(0.9);
+            e.root.position.y -= dt * 1.4;
+          } else if (e.deathTimer < 0.35) {
+            e.root.position.y -= dt * 0.8;
+          }
           if (e.deathTimer <= 0) {
             this.scene.remove(e.root);
             e.hpBarWrap.remove();
@@ -365,6 +502,29 @@ export class EnemyManager {
         continue;
       }
 
+      if (e.proceduralBoss && e.actions.length === 0) {
+        const pt = performance.now() * 0.001;
+        const breathe = 1 + Math.sin(pt * 1.35 + e.spec.scale) * 0.018;
+        e.modelWrap.scale.setScalar((e.phase2 ? 1.36 : 1) * breathe);
+        e.modelWrap.rotation.z = Math.sin(pt * 0.9) * 0.012;
+        if (e.windUpTimer > 0) {
+          e.modelWrap.rotation.x = -0.10 - Math.sin((1 - e.windUpTimer) * Math.PI) * 0.14;
+        } else {
+          e.modelWrap.rotation.x = 0;
+        }
+      }
+      if (e.undulate && e.dragonUniforms.length > 0) {
+        const t = performance.now() * 0.001;
+        for (const u of e.dragonUniforms) u.value = t;
+        for (const a of e.dragonAttackUniforms) a.value = e.windUpTimer > 0 ? Math.min(1, (1.1 - e.windUpTimer) / 0.5) : 0;
+        e.modelWrap.position.y = Math.sin(t * 1.2) * 0.15;
+      }
+      if (e.actions.length > 0 && e.spec.name.includes('龙')) {
+        const dtSway = performance.now() * 0.001;
+        e.modelWrap.rotation.y = Math.sin(dtSway * 0.9) * 0.48;
+        e.modelWrap.rotation.z = Math.sin(dtSway * 1.35) * 0.12;
+        e.modelWrap.position.y = Math.sin(dtSway * 1.7) * 0.32;
+      }
       if (e.mixer && e.frozenTimer <= 0) {
         e.mixer.update(dt * (e.phase3 ? 1.55 : e.phase2 ? 1.35 : 1.0));
       }
@@ -407,6 +567,11 @@ export class EnemyManager {
         e.modelWrap.position.x = 0;
       }
 
+      if (e.recoveryTimer > 0) {
+        e.recoveryTimer = Math.max(0, e.recoveryTimer - dt);
+        this.updateFloatingBar(e);
+        continue;
+      }
       const toPlayer = new THREE.Vector3(
         playerPos.x - e.root.position.x,
         0,
@@ -419,19 +584,27 @@ export class EnemyManager {
       if (dist < aggroRadius) {
         anyAggro = true;
         const desiredYaw = Math.atan2(toPlayer.x, toPlayer.z);
-        e.root.rotation.y = THREE.MathUtils.lerp(e.root.rotation.y, desiredYaw, dt * 6);
+        if (e.windUpTimer <= 0) e.root.rotation.y = desiredYaw;
+        else e.root.rotation.y = e.attackYaw;
 
         if (e.windUpTimer > 0) {
           e.vel.multiplyScalar(Math.max(0, 1 - dt * 10));
-          this.playEnemyClip(e, e.phase2 ? 3 : 2);
+          this.playEnemyClip(e, e.attackClipIdx);
           e.windUpTimer -= dt;
           const pulse = 0.42 + Math.abs(Math.sin(performance.now() * 0.02)) * 0.45;
           (e.telegraphRing.material as THREE.MeshBasicMaterial).opacity = pulse;
-          e.telegraphRing.scale.setScalar(e.spec.isBoss ? (e.pattern === 2 ? 1.7 : e.pattern === 1 ? 1.25 : 1) : 1);
-          e.modelWrap.position.y = Math.sin((1 - e.windUpTimer) * Math.PI) * (e.spec.isBoss ? 1.15 : 0.45);
+          e.telegraphRing.scale.setScalar(1);
+          const progress = 1 - e.windUpTimer / e.windUpDuration;
+          // Slime compresses, then jumps; skeleton and wolf keep planted feet.
+          if (e.spec.name.includes('史莱姆')) {
+            e.modelWrap.scale.y = 1 - Math.sin(progress * Math.PI) * 0.28;
+            e.modelWrap.position.y = Math.sin(progress * Math.PI) * 0.5;
+          }
 
           if (e.windUpTimer <= 0) {
-            // Execute strike!
+            // Execute strike, then leave a punishable recovery instead of instant tracking.
+            e.recoveryTimer = e.spec.isBoss ? (e.pattern === 2 ? 0.85 : 0.6) : 0.38;
+            onAttack?.(e, 'impact');
             e.modelWrap.position.y = 0;
             (e.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
             e.attackCooldown = e.phase2 ? 1.35 : e.spec.isBoss ? 2.1 : 1.85;
@@ -441,8 +614,9 @@ export class EnemyManager {
             let isSlam = isBoss;
             if (isBoss && e.pattern === 1) {
               // Charge: close the gap before the hit.
-              const chargeDir = new THREE.Vector3(playerPos.x - e.root.position.x, 0, playerPos.z - e.root.position.z).normalize();
+              const chargeDir = new THREE.Vector3(Math.sin(e.attackYaw), 0, Math.cos(e.attackYaw));
               e.root.position.addScaledVector(chargeDir, 3.2);
+              resolveCollision?.(e.root.position);
               hitRadius = 3.4;
               isSlam = true;
             } else if (isBoss && e.pattern === 2) {
@@ -450,15 +624,36 @@ export class EnemyManager {
               hitRadius = 7.4;
               isSlam = true;
             }
-            const currentDist = e.root.position.distanceTo(playerPos);
-            if (currentDist <= hitRadius) {
-              onHitPlayer({
-                damage: e.phase3 ? Math.round(e.spec.atk * 1.65) : e.phase2 ? Math.round(e.spec.atk * 1.35) : e.spec.atk,
-                enemyName: e.spec.name,
-                isBossSlam: isSlam,
-                enemy: e,
-                pos: e.root.position.clone(),
-              });
+            if (isBoss && e.spec.name.includes('龙') && e.pattern === 2) {
+              // Dragon breath: forward cone instead of a circular shockwave.
+              this.spawnDragonBreath(e);
+              const fwd = new THREE.Vector3(Math.sin(e.root.rotation.y), 0, Math.cos(e.root.rotation.y));
+              const to = new THREE.Vector3(playerPos.x - e.root.position.x, 0, playerPos.z - e.root.position.z);
+              const breathDist = to.length();
+              const inCone = breathDist < 10 && (breathDist < 0.1 || to.normalize().dot(fwd) > 0.42);
+              if (inCone) {
+                onHitPlayer({
+                  damage: Math.round(e.spec.atk * (e.phase3 ? 1.8 : 1.45)),
+                  enemyName: e.spec.name,
+                  isBossSlam: true,
+                  enemy: e,
+                  pos: e.root.position.clone(),
+                });
+              }
+            } else {
+              const currentDist = e.root.position.distanceTo(playerPos);
+              const attackDirection = new THREE.Vector3(Math.sin(e.attackYaw), 0, Math.cos(e.attackYaw));
+              const facing = toPlayer.lengthSq() < 0.01 || toPlayer.clone().normalize().dot(attackDirection) > 0.1;
+              const radial = (isBoss && e.pattern === 2) || e.spec.name.includes('史莱姆');
+              if (currentDist <= hitRadius && (radial || facing)) {
+                onHitPlayer({
+                  damage: e.phase3 ? Math.round(e.spec.atk * 1.65) : e.phase2 ? Math.round(e.spec.atk * 1.35) : e.spec.atk,
+                  enemyName: e.spec.name,
+                  isBossSlam: isSlam,
+                  enemy: e,
+                  pos: e.root.position.clone(),
+                });
+              }
             }
           }
         } else {
@@ -489,7 +684,7 @@ export class EnemyManager {
 
           if (e.vel.lengthSq() > 0.025) {
             if (e.actions.length > 0) {
-              this.playEnemyClip(e, 1);
+              this.playEnemyClip(e, e.moveClipIdx);
               const act = e.actions[e.activeClipIdx];
               if (act) act.timeScale = THREE.MathUtils.clamp(e.vel.length() / moveSpd, 0.6, 1.35);
               e.modelWrap.position.y = 0;
@@ -502,13 +697,33 @@ export class EnemyManager {
           } else if (dist <= atkRange && e.attackCooldown <= 0) {
             // Start telegraphed wind-up so player can dodge or counter!
             if (e.spec.isBoss) {
-              e.pattern = (e.pattern + 1) % 3;
+              // Bull commits to a charge, Hunshi to a ground burst, dragon to breath.
+              e.pattern = e.pattern === 0 ? (e.spec.name.includes('牛魔王') ? 1 : 2) : 0;
               e.windUpTimer = [e.phase2 ? 0.68 : 0.9, 0.5, 1.15][e.pattern];
             } else {
-              e.windUpTimer = 0.65;
+              e.windUpTimer = e.spec.name.includes('骸骨') ? 0.85 : e.spec.name.includes('史莱姆') ? 1.05 : 0.55;
             }
+            e.attackYaw = desiredYaw;
+            e.root.rotation.y = desiredYaw;
+            e.windUpDuration = e.windUpTimer;
+            const breath = e.spec.name.includes('龙') && e.pattern === 2;
+            const radial = (e.spec.isBoss && e.pattern === 2) || e.spec.name.includes('史莱姆');
+            const radius = breath ? 10 : e.spec.isBoss ? (e.pattern === 2 ? 7.4 : e.pattern === 1 ? 6.6 : e.phase2 ? 5.2 : 4.5) : 2.75;
+            const arc = radial && !breath ? Math.PI * 2 : breath ? 2 * Math.acos(0.42) : Math.PI * 0.94;
+            e.telegraphRing.geometry.dispose();
+            e.telegraphRing.geometry = new THREE.RingGeometry(0.12, radius, 48, 1, -Math.PI / 2 - arc / 2, arc);
+            (e.telegraphRing.material as THREE.MeshBasicMaterial).color.setHex(breath ? 0xffa346 : 0xff4936);
+            const action = e.actions[e.attackClipIdx];
+            if (action) {
+              e.actions.forEach(a => a.fadeOut(0.1));
+              action.reset().setLoop(THREE.LoopOnce, 1).fadeIn(0.08).play();
+              action.clampWhenFinished = true;
+              action.timeScale = action.getClip().duration / (e.windUpTimer + 0.15) / (e.phase3 ? 1.55 : e.phase2 ? 1.35 : 1);
+              e.activeClipIdx = e.attackClipIdx;
+            }
+            onAttack?.(e, 'tell');
           } else {
-            this.playEnemyClip(e, 0);
+            this.playEnemyClip(e, e.idleClipIdx);
             e.modelWrap.rotation.x = 0;
             e.modelWrap.rotation.z = 0;
             e.modelWrap.position.y = 0;
@@ -517,7 +732,7 @@ export class EnemyManager {
           }
         }
       } else {
-        this.playEnemyClip(e, 0);
+        this.playEnemyClip(e, e.idleClipIdx);
       }
 
       e.root.position.x = THREE.MathUtils.clamp(e.root.position.x, -32, 32);

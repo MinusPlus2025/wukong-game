@@ -1,3 +1,5 @@
+import { modelBounds } from '../utils/modelBounds';
+import { disposeObject } from '../utils/disposeObject';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
@@ -58,6 +60,10 @@ export class WukongController {
 
   public clones: CloneMinion[] = [];
   private afterimages: Array<{ mesh: THREE.Object3D; life: number }> = [];
+  private staffTrail!: THREE.Mesh;
+  private staffTrailGeo = new THREE.BufferGeometry();
+  private staffTrailPoints: THREE.Vector3[] = [];
+  private readonly staffTrailMax = 18;
   private mixer: THREE.AnimationMixer | null = null;
   private handAttached = false;
   private handBone: THREE.Object3D | null = null;
@@ -75,7 +81,7 @@ export class WukongController {
     // Glowing Ruyi Jingu Bang (如意金箍棒)
     const staffGroup = new THREE.Group();
     const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.055, 0.055, 2.7, 16),
+      new THREE.CylinderGeometry(0.045, 0.045, 2.35, 16),
       new THREE.MeshStandardMaterial({ color: 0x9e1f18, roughness: 0.35, metalness: 0.4 })
     );
     const tipMat = new THREE.MeshStandardMaterial({
@@ -85,11 +91,34 @@ export class WukongController {
       metalness: 0.85,
       roughness: 0.18,
     });
-    const tipTop = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.55, 16), tipMat);
-    tipTop.position.y = 1.15;
-    const tipBot = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.55, 16), tipMat);
-    tipBot.position.y = -1.15;
+    const tipTop = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.5, 16), tipMat);
+    tipTop.position.y = 1.0;
+    const tipBot = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.5, 16), tipMat);
+    tipBot.position.y = -1.0;
     shaft.add(tipTop, tipBot);
+
+    // Forged gold bands along the shaft, a leather grip and a red tassel.
+    const bandMat = new THREE.MeshStandardMaterial({ color: 0xe0b35c, metalness: 0.9, roughness: 0.22 });
+    for (let i = -3; i <= 3; i++) {
+      if (i === 0) continue;
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.009, 8, 24), bandMat);
+      band.rotation.x = Math.PI / 2;
+      band.position.y = i * 0.28;
+      shaft.add(band);
+    }
+    const grip = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.055, 0.52, 14),
+      new THREE.MeshStandardMaterial({ color: 0x2a1710, roughness: 0.92 })
+    );
+    grip.position.y = -0.62;
+    shaft.add(grip);
+    const tassel = new THREE.Mesh(
+      new THREE.ConeGeometry(0.09, 0.36, 8),
+      new THREE.MeshStandardMaterial({ color: 0xb01f18, roughness: 0.8 })
+    );
+    tassel.position.y = -1.28;
+    tassel.rotation.z = Math.PI;
+    shaft.add(tassel);
 
     this.staffMesh = shaft;
     staffGroup.add(shaft);
@@ -112,6 +141,22 @@ export class WukongController {
     this.slashArc.rotation.x = -Math.PI / 2;
     this.slashArc.position.y = 1.1;
     this.root.add(this.slashArc);
+
+    const tmpPos = new Float32Array(this.staffTrailMax * 2 * 3);
+    const tmpIdx: number[] = [];
+    for (let i = 0; i < this.staffTrailMax - 1; i++) {
+      const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
+      tmpIdx.push(a, b, c, b, d, c);
+    }
+    this.staffTrailGeo.setAttribute('position', new THREE.BufferAttribute(tmpPos, 3));
+    this.staffTrailGeo.setIndex(tmpIdx);
+    this.staffTrail = new THREE.Mesh(this.staffTrailGeo, new THREE.MeshBasicMaterial({
+      color: 0xffd166, transparent: true, opacity: 0, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    this.staffTrail.renderOrder = 12;
+    this.scene.add(this.staffTrail);
+
 
     // Golden Nimbus Cloud (筋斗云)
     const cloudMat = new THREE.MeshStandardMaterial({
@@ -145,7 +190,7 @@ export class WukongController {
         if (!head.ok || (head.headers.get('content-type') || '').includes('text/html')) continue;
         const gltf = await loader.loadAsync(url);
         const m = gltf.scene;
-        const box = new THREE.Box3().setFromObject(m);
+        const box = modelBounds(m, gltf.animations);
         const sz = new THREE.Vector3();
         const ctr = new THREE.Vector3();
         box.getSize(sz);
@@ -157,8 +202,12 @@ export class WukongController {
           if ((o as THREE.Mesh).isMesh) {
             o.castShadow = true;
             o.receiveShadow = true;
+            o.frustumCulled = false;
+            const mat = (o as THREE.Mesh).material as THREE.MeshStandardMaterial;
+            if (mat) { mat.side = THREE.DoubleSide; mat.transparent = false; mat.opacity = 1; mat.alphaTest = 0; }
           }
         });
+        m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { const mats = (Array.isArray((o as THREE.Mesh).material) ? (o as THREE.Mesh).material : [(o as THREE.Mesh).material]) as THREE.Material[]; for (const raw of mats) { const mat = raw as THREE.MeshStandardMaterial; if (mat?.map) { mat.map.anisotropy = 8; mat.map.needsUpdate = true; } } } });
         this.bodyWrap.add(m);
 
         // Reparent the procedural Jingu Bang from the back to the right hand bone.
@@ -240,6 +289,38 @@ export class WukongController {
     }
   }
 
+  private updateStaffTrail(): void {
+    this.root.updateMatrixWorld(true);
+    const tip = new THREE.Vector3(0, 1.75, 0).applyMatrix4(this.staffPivot.matrixWorld);
+    if (this.attackTimer > 0 || this.spinTimer > 0 || this.parryTimer > 0) {
+      this.staffTrailPoints.unshift(tip.clone());
+      if (this.staffTrailPoints.length > this.staffTrailMax) this.staffTrailPoints.pop();
+    } else if (this.staffTrailPoints.length > 0) {
+      this.staffTrailPoints.pop();
+    }
+    const pts = this.staffTrailPoints;
+    const pos = this.staffTrailGeo.getAttribute('position') as THREE.BufferAttribute;
+    if (pts.length < 2) {
+      (this.staffTrail.material as THREE.MeshBasicMaterial).opacity = 0;
+      return;
+    }
+    for (let i = 0; i < this.staffTrailMax; i++) {
+      const p = pts[Math.min(i, pts.length - 1)];
+      const prev = pts[Math.min(pts.length - 1, Math.max(0, i - 1))];
+      const next = pts[Math.min(pts.length - 1, i + 1)];
+      const dir = next.clone().sub(prev);
+      if (dir.lengthSq() < 0.0001) dir.set(0, 1, 0);
+      const side = new THREE.Vector3().crossVectors(dir.normalize(), new THREE.Vector3(0, 1, 0));
+      if (side.lengthSq() < 0.0001) side.set(1, 0, 0);
+      side.normalize().multiplyScalar(0.075 * (1 - i / this.staffTrailMax));
+      pos.setXYZ(i * 2, p.x + side.x, p.y + side.y, p.z + side.z);
+      pos.setXYZ(i * 2 + 1, p.x - side.x, p.y - side.y, p.z - side.z);
+    }
+    pos.needsUpdate = true;
+    this.staffTrail.geometry.computeBoundingSphere();
+    (this.staffTrail.material as THREE.MeshBasicMaterial).opacity = 0.55;
+  }
+
   private playClipIndex(idx: number): void {
     if (!this.mixer || this.actions.length === 0) return;
     const safeIdx = Math.min(idx, this.actions.length - 1);
@@ -317,6 +398,14 @@ export class WukongController {
     this.scene.add(ghost);
     this.afterimages.push({ mesh: ghost, life: 0.55 });
     return true;
+  }
+
+  public clearTransientEffects(): void {
+    for (const c of this.clones) { c.root.removeFromParent(); disposeObject(c.root); }
+    for (const img of this.afterimages) { img.mesh.removeFromParent(); disposeObject(img.mesh); }
+    this.clones = []; this.afterimages = [];
+    this.staffTrailPoints = [];
+    (this.staffTrail.material as THREE.MeshBasicMaterial).opacity = 0;
   }
 
   public summonHairClones(): boolean {
@@ -438,6 +527,7 @@ export class WukongController {
       this.root.worldToLocal(hp);
       this.staffPivot.position.copy(hp);
     }
+    this.updateStaffTrail();
 
     // Combat swing animation & giant Ruyi Jingu Bang scaling + Aholo Retargeted Skeletal Clips
     if (this.dodgeTimer > 0) {
@@ -491,6 +581,7 @@ export class WukongController {
       img.life -= dt;
       if (img.life <= 0) {
         this.scene.remove(img.mesh);
+        disposeObject(img.mesh);
         this.afterimages.splice(i, 1);
       } else {
         ((img.mesh as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = img.life;

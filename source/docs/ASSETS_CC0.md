@@ -11,3 +11,6 @@
 
 Downloaded at 1K JPG (diffuse/normal/roughness/displacement) to keep browser upload cost low.
 No attribution required by CC0; recorded here for auditability.
+
+## 2026-11-21 integration update
+No new third-party assets. Existing Aholo and CC0 assets retained. Water strands, flame volumes and radial particle texture are locally authored procedural code; no external licensing dependency. Static repeated props share chapter-scoped geometry/material/texture resources.

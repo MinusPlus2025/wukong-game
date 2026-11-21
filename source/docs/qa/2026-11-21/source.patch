@@ -1,0 +1,1307 @@
+diff -ru /tmp/wukong-original-src/audio/WukongAudio.ts src/audio/WukongAudio.ts
+--- /tmp/wukong-original-src/audio/WukongAudio.ts	2026-11-21 21:52:35
++++ src/audio/WukongAudio.ts	2026-11-21 22:09:29
+@@ -27,6 +27,10 @@
+   private staffMetal!: Tone.Synth;
+   private impactNoise!: Tone.NoiseSynth;
+   private bossRoar!: Tone.MonoSynth;
++  private activeVoice: Tone.Player | null = null;
++  private voiceDuckTimer = 0;
++  private phaseActive = false;
++  private audioTimes = new Map<string, number>();
+   private voices: Record<string, Tone.Player> = {};
+   private bgmPlayer: Tone.Player | null = null;
+   private ambientPlayer: Tone.Player | null = null;
+@@ -57,7 +61,10 @@
+ 
+     this.master = new Tone.Gain(0.58);
+     this.master.connect(new Tone.Limiter(-1).toDestination());
+-    Tone.connect(this.master, this.recordDest);
++    // Recording and speakers share the same peak protection.
++    const recordLimiter = new Tone.Limiter(-1);
++    this.master.connect(recordLimiter);
++    Tone.connect(recordLimiter, this.recordDest);
+ 
+     // Master analog warmth filter removes all harsh digital highs above 2.6 kHz
+     this.warmthFilter = new Tone.Filter({
+@@ -212,6 +219,7 @@
+       }
+     }).catch(() => {});
+ 
++    this.isReady = true;
+     if (this.ambientPending >= 0) this.setAmbient(this.ambientPending);
+ 
+     Tone.getTransport().bpm.value = 104;
+@@ -262,19 +270,26 @@
+ 
+     Tone.getTransport().start();
+     this.isReady = true;
++    await Tone.loaded();
+   }
+ 
+   public getAudioStream(): MediaStream | null {
+     return this.recordDest?.stream ?? null;
+   }
+ 
++  private nextAudioTime(channel: string): number {
++    const time = Math.max(Tone.now(), (this.audioTimes.get(channel) ?? 0) + 0.005);
++    this.audioTimes.set(channel, time);
++    return time;
++  }
++
+   private playSfx(name: string, volume = -5): void {
+     if (this.muted) return;
+     const p = this.sfxPlayers[name];
+     if (!p || !p.loaded) return;
+     try { p.stop(); } catch { /* not started */ }
+     p.volume.value = volume;
+-    p.start(Tone.now());
++    p.start(this.nextAudioTime('player:' + name));
+   }
+ 
+   public playLightSwing(comboIdx: number): void {
+@@ -284,17 +299,17 @@
+     this.whooshFilter.frequency.setValueAtTime(freqs[comboIdx % 3], Tone.now());
+     this.whooshFilter.frequency.exponentialRampToValueAtTime(160, Tone.now() + 0.15);
+     this.playSfx(comboIdx >= 2 ? 'whoosh_heavy' : 'whoosh_light', -7);
+-    this.whooshNoise.triggerAttackRelease('16n');
++    this.whooshNoise.triggerAttackRelease('16n', this.nextAudioTime('whoosh'));
+     const notes = ['D6', 'F#6', 'A6'];
+-    this.staffMetal.triggerAttackRelease(notes[comboIdx % 3], '32n', undefined, 0.28);
++    this.staffMetal.triggerAttackRelease(notes[comboIdx % 3], '32n', this.nextAudioTime('metal'), 0.28);
+   }
+ 
+   public playStaffHit(heavy = false): void {
+     if (!this.isReady || this.muted) return;
+     // Deep satisfying physical impact thud + warm jade/gold overtone
+-    this.tangguDrum.triggerAttackRelease(heavy ? 'C1' : 'F#1', '8n', undefined, heavy ? 0.92 : 0.58);
++    this.tangguDrum.triggerAttackRelease(heavy ? 'C1' : 'F#1', '8n', this.nextAudioTime('drum'), heavy ? 0.92 : 0.58);
+     this.playSfx(heavy ? 'impact_heavy' : 'impact', heavy ? -3 : -6);
+-    this.impactNoise.triggerAttackRelease(heavy ? '4n' : '16n', undefined, heavy ? 0.9 : 0.45);
++    this.impactNoise.triggerAttackRelease(heavy ? '4n' : '16n', this.nextAudioTime('impact'), heavy ? 0.9 : 0.45);
+     if (heavy) {
+       this.chimeHarmonic.triggerAttackRelease(['D4', 'A4', 'D5'], '2n', undefined, 0.45);
+     } else {
+@@ -307,7 +322,7 @@
+     // Sacred golden singing bowl chord ("定!")
+     this.playSfx('gong', -8);
+     this.chimeHarmonic.triggerAttackRelease(['D5', 'A5', 'F#6'], '1n', undefined, 0.62);
+-    this.tangguDrum.triggerAttackRelease('D1', '4n', undefined, 0.55);
++    this.tangguDrum.triggerAttackRelease('D1', '4n', this.nextAudioTime('drum'), 0.55);
+   }
+ 
+   public playCloneSpell(): void {
+@@ -324,7 +339,7 @@
+     this.whooshFilter.frequency.setValueAtTime(680, Tone.now());
+     this.whooshFilter.frequency.exponentialRampToValueAtTime(140, Tone.now() + 0.55);
+     this.playSfx('whoosh_heavy', -6);
+-    this.whooshNoise.triggerAttackRelease('2n');
++    this.whooshNoise.triggerAttackRelease('2n', this.nextAudioTime('whoosh'));
+     this.chimeHarmonic.triggerAttackRelease(['E4', 'B4', 'F#5'], '2n', undefined, 0.42);
+   }
+ 
+@@ -337,7 +352,7 @@
+   public playVictory(): void {
+     if (!this.isReady || this.muted) return;
+     this.playSfx('gong', -4);
+-    this.tangguDrum.triggerAttackRelease('D1', '1n', undefined, 0.8);
++    this.tangguDrum.triggerAttackRelease('D1', '1n', this.nextAudioTime('drum'), 0.8);
+     ['D4', 'E4', 'F#4', 'A4', 'B4', 'D5'].forEach((n, i) => {
+       setTimeout(() => {
+         if (!this.muted) this.guqin.triggerAttackRelease(n, '1n', undefined, 0.52);
+@@ -350,15 +365,15 @@
+     this.playSfx('whoosh_light', -8);
+     this.whooshFilter.frequency.setValueAtTime(980, Tone.now());
+     this.whooshFilter.frequency.exponentialRampToValueAtTime(220, Tone.now() + 0.22);
+-    this.whooshNoise.triggerAttackRelease('32n');
++    this.whooshNoise.triggerAttackRelease('32n', this.nextAudioTime('whoosh'));
+   }
+ 
+   public playBossRoar(): void {
+     if (!this.isReady || this.muted) return;
+     this.playSfx('slam', -5);
+-    this.bossRoar.triggerAttackRelease('C2', '2n', undefined, 0.8);
+-    this.tangguDrum.triggerAttackRelease('C1', '2n', undefined, 0.9);
+-    this.impactNoise.triggerAttackRelease('2n', undefined, 0.7);
++    this.bossRoar.triggerAttackRelease('C2', '2n', this.nextAudioTime('roar'), 0.8);
++    this.tangguDrum.triggerAttackRelease('C1', '2n', this.nextAudioTime('drum'), 0.9);
++    this.impactNoise.triggerAttackRelease('2n', this.nextAudioTime('impact'), 0.7);
+   }
+ 
+   public setAmbient(index: number): void {
+@@ -378,27 +393,52 @@
+     }).catch(() => {});
+   }
+ 
+-  public playVoice(name: string): void {
+-    if (!this.isReady || this.muted) return;
++  public playVoice(name: string): number {
++    if (!this.isReady || this.muted) return 0;
+     const p = this.voices[name];
+-    if (!p || !p.loaded) return;
+-    try { p.stop(); } catch { /* not started */ }
+-    p.start(Tone.now());
+-    if (this.bgmPlayer) {
+-      this.bgmPlayer.volume.rampTo(-21, 0.12);
+-      window.setTimeout(() => this.bgmPlayer?.volume.rampTo(-15, 0.6), 1800);
+-    }
++    if (!p || !p.loaded) return 0;
++    // One dialogue lane: a new subtitle must never accompany two overlapping lines.
++    this.activeVoice?.stop();
++    this.activeVoice = p;
++    window.clearTimeout(this.voiceDuckTimer);
++    p.start(this.nextAudioTime('player:' + name));
++    const duration = p.buffer.duration / p.playbackRate;
++    this.bgmPlayer?.volume.rampTo(-23, 0.06);
++    this.ambientPlayer?.volume.rampTo(-26, 0.06);
++    this.voiceDuckTimer = window.setTimeout(() => {
++      this.activeVoice = null;
++      this.bgmPlayer?.volume.rampTo(this.inCombat ? (this.phaseActive ? -13 : -16) : -22, 0.6);
++      this.ambientPlayer?.volume.rampTo(-20, 0.6);
++    }, duration * 1000 + 100);
++    return duration;
+   }
+ 
++  public setCombat(active: boolean): void {
++    if (this.inCombat === active) return;
++    this.inCombat = active;
++    if (!this.activeVoice) this.bgmPlayer?.volume.rampTo(active ? (this.phaseActive ? -13 : -16) : -22, 1.2);
++  }
++
++  public playAttackCue(kind: 'dragon' | 'boss' | 'minion'): void {
++    if (!this.isReady || this.muted) return;
++    this.staffMetal.triggerAttackRelease(kind === 'dragon' ? 'D3' : kind === 'boss' ? 'A2' : 'A4', '16n', this.nextAudioTime('metal'), 0.22);
++  }
++
++  public playEnemyImpact(boss: boolean): void {
++    if (!this.isReady || this.muted) return;
++    this.playSfx(boss ? 'slam' : 'whoosh_light', boss ? -10 : -14);
++  }
++
+   public setBossPhase(on: boolean): void {
+     if (!this.isReady) return;
+     Tone.getTransport().bpm.rampTo(on ? 118 : 104, 1.2);
+-    if (this.bgmPlayer) this.bgmPlayer.playbackRate = on ? 1.055 : 1;
++    this.phaseActive = on;
++    if (!this.activeVoice) this.bgmPlayer?.volume.rampTo(this.inCombat ? (on ? -13 : -16) : -22, 1);
+   }
+ 
+   public toggleMute(): boolean {
+     this.muted = !this.muted;
+-    if (this.isReady) this.master.gain.rampTo(this.muted ? 0 : 0.62, 0.15);
++    if (this.isReady) this.master.gain.rampTo(this.muted ? 0 : 0.58, 0.15);
+     return this.muted;
+   }
+ }
+diff -ru /tmp/wukong-original-src/enemies/EnemyManager.ts src/enemies/EnemyManager.ts
+--- /tmp/wukong-original-src/enemies/EnemyManager.ts	2026-11-21 21:52:35
++++ src/enemies/EnemyManager.ts	2026-11-21 22:07:08
+@@ -1,6 +1,7 @@
++import { modelBounds } from '../utils/modelBounds';
++import { disposeObject } from '../utils/disposeObject';
+ import * as THREE from 'three';
+ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+-import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+ import type { EnemySpawnSpec } from '../data/ChaptersData';
+ 
+ export interface ActiveEnemy {
+@@ -17,6 +18,9 @@
+   phase2: boolean;
+   frozenTimer: number;
+   windUpTimer: number;
++  windUpDuration: number;
++  recoveryTimer: number;
++  attackYaw: number;
+   attackCooldown: number;
+   hitFlashTimer: number;
+   staggerTimer: number;
+@@ -77,21 +81,11 @@
+     const texs = new Set<THREE.Texture>();
+     for (const e of this.enemies) {
+       this.scene.remove(e.root);
+-      e.root.traverse((o) => {
+-        const mesh = o as THREE.Mesh;
+-        if (!mesh.isMesh) return;
+-        if (mesh.geometry && !geos.has(mesh.geometry)) { geos.add(mesh.geometry); mesh.geometry.dispose(); }
+-        const list = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as THREE.Material[];
+-        for (const raw of list) {
+-          const mat = raw as THREE.MeshStandardMaterial;
+-          if (!mat || mats.has(mat)) continue; mats.add(mat);
+-          for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'alphaMap'] as const) {
+-            const tex = (mat as unknown as Record<string, THREE.Texture | null>)[key];
+-            if (tex && !texs.has(tex)) { texs.add(tex); tex.dispose(); }
+-          }
+-          mat.dispose();
+-        }
+-      });
++      e.mixer?.stopAllAction();
++      if (e.mixer) e.mixer.uncacheRoot(e.mixer.getRoot());
++      e.actions = [];
++      e.mixer = null;
++      disposeObject(e.root, mats, geos, texs);
+       e.hpBarWrap.remove();
+     }
+     for (const fx of this.breathFx) { this.scene.remove(fx.mesh); fx.mesh.geometry.dispose(); (fx.mesh.material as THREE.Material).dispose(); }
+@@ -167,6 +161,9 @@
+         phase2: false,
+         frozenTimer: 0,
+         windUpTimer: 0,
++        windUpDuration: 0,
++        recoveryTimer: 0,
++        attackYaw: 0,
+         attackCooldown: 1.4 + Math.random() * 0.8,
+         hitFlashTimer: 0,
+         staggerTimer: 0,
+@@ -208,22 +205,11 @@
+         const head = await fetch(url, { method: 'HEAD' });
+         if (!head.ok || (head.headers.get('content-type') || '').includes('text/html')) continue;
+         const gltf = await loader.loadAsync(url);
+-        if (enemy.dead || gen !== this.generation) return;
++        if (enemy.dead || gen !== this.generation) { disposeObject(gltf.scene); return; }
+ 
+-        const m = SkeletonUtils.clone(gltf.scene);
++        const m = gltf.scene;
+         // Armature/empty nodes can inflate setFromObject massively. Measure visible mesh geometry only.
+-        m.updateMatrixWorld(true);
+-        const box = new THREE.Box3();
+-        const tb = new THREE.Box3();
+-        m.traverse((o) => {
+-          const mesh = o as THREE.Mesh;
+-          if (!mesh.isMesh || !mesh.geometry) return;
+-          mesh.geometry.computeBoundingBox();
+-          if (!mesh.geometry.boundingBox) return;
+-          tb.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+-          box.union(tb);
+-        });
+-        if (box.isEmpty()) box.setFromObject(m);
++        const box = modelBounds(m, gltf.animations);
+         const sz = new THREE.Vector3();
+         const ctr = new THREE.Vector3();
+         box.getSize(sz);
+@@ -249,7 +235,7 @@
+             if (!enemy.spec.isBoss) {
+               const mat = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
+               if (mat && mat.color) {
+-                const clone = mat.clone();
++                const clone = mat;
+                 clone.color.multiplyScalar(0.62);
+                 clone.emissive = new THREE.Color(0x1a0d08);
+                 clone.emissiveIntensity = 0.18;
+@@ -272,9 +258,17 @@
+           const find = (re: RegExp) => gltf.animations.findIndex((c) => re.test(c.name));
+           enemy.idleClipIdx = find(/idle/i);
+           enemy.attackClipIdx = find(/headbutt|punch|bite|attack|claw|hit/i);
+-          enemy.moveClipIdx = find(/run|walk|fast_flying|flying/i);
++          enemy.moveClipIdx = find(/run|walk|fast_flying/i);
++          if (enemy.moveClipIdx < 0) enemy.moveClipIdx = find(/^(flying|fly)$/i);
+           enemy.deathClipIdx = find(/death/i);
+-          this.playEnemyClip(enemy, enemy.idleClipIdx >= 0 ? enemy.idleClipIdx : 0);
++          // Retargeted bull clips have generic names. Pose inspection: 1 idle, 2 run,
++          // 3 short strike; keep this mapping specific to this asset, never a global fallback.
++          if (url === 'models/bullking-animated.glb') {
++            enemy.idleClipIdx = find(/^animation_1$/);
++            enemy.moveClipIdx = find(/^animation_2$/);
++            enemy.attackClipIdx = find(/^animation_3$/);
++          }
++          this.playEnemyClip(enemy, enemy.idleClipIdx);
+         } else if (enemy.spec.isBoss) {
+           enemy.proceduralBoss = true;
+           if (enemy.spec.modelCandidates.some((u) => u.includes('zhulong'))) enemy.undulate = true;
+@@ -329,7 +323,9 @@
+ 
+   private playEnemyClip(e: ActiveEnemy, idx: number): void {
+     if (!e.mixer || e.actions.length === 0) return;
+-    const safe = Math.min(idx, e.actions.length - 1);
++    // Missing clips leave the current pose; never substitute Death/Hit by array order.
++    const safe = idx >= 0 ? idx : e.idleClipIdx;
++    if (safe < 0 || safe >= e.actions.length || safe === e.deathClipIdx) return;
+     if (e.activeClipIdx === safe) return;
+     e.actions[safe].reset().fadeIn(0.16).play();
+     if (e.activeClipIdx >= 0 && e.actions[e.activeClipIdx]) {
+@@ -411,7 +407,10 @@
+       enemy.deathTimer = 1.2;
+       if (enemy.deathClipIdx >= 0 && enemy.actions[enemy.deathClipIdx]) {
+         enemy.actions.forEach((a) => a.stop());
+-        enemy.actions[enemy.deathClipIdx].reset().fadeIn(0.1).play();
++        const death = enemy.actions[enemy.deathClipIdx];
++        death.setLoop(THREE.LoopOnce, 1);
++        death.clampWhenFinished = true;
++        death.reset().fadeIn(0.1).play();
+         enemy.activeClipIdx = enemy.deathClipIdx;
+       }
+       (enemy.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
+@@ -473,8 +472,15 @@
+     playerPos: THREE.Vector3,
+     terrainHeightFn: (x: number, z: number) => number,
+     onHitPlayer: (ev: EnemyHitPlayerEvent) => void,
+-    resolveCollision?: (pos: THREE.Vector3) => void
++    resolveCollision?: (pos: THREE.Vector3) => void,
++    onAttack?: (enemy: ActiveEnemy, stage: 'tell' | 'impact') => void
+   ): boolean {
++    for (let i = this.breathFx.length - 1; i >= 0; i--) {
++      const fx = this.breathFx[i];
++      fx.life -= dt;
++      if (fx.life <= 0) { fx.mesh.removeFromParent(); disposeObject(fx.mesh); this.breathFx.splice(i, 1); }
++      else (fx.mesh.material as THREE.MeshBasicMaterial).opacity = 0.34 * fx.life / 0.45;
++    }
+     let anyAggro = false;
+ 
+     for (const e of this.enemies) {
+@@ -561,6 +567,11 @@
+         e.modelWrap.position.x = 0;
+       }
+ 
++      if (e.recoveryTimer > 0) {
++        e.recoveryTimer = Math.max(0, e.recoveryTimer - dt);
++        this.updateFloatingBar(e);
++        continue;
++      }
+       const toPlayer = new THREE.Vector3(
+         playerPos.x - e.root.position.x,
+         0,
+@@ -573,19 +584,27 @@
+       if (dist < aggroRadius) {
+         anyAggro = true;
+         const desiredYaw = Math.atan2(toPlayer.x, toPlayer.z);
+-        e.root.rotation.y = THREE.MathUtils.lerp(e.root.rotation.y, desiredYaw, dt * 6);
++        if (e.windUpTimer <= 0) e.root.rotation.y = desiredYaw;
++        else e.root.rotation.y = e.attackYaw;
+ 
+         if (e.windUpTimer > 0) {
+           e.vel.multiplyScalar(Math.max(0, 1 - dt * 10));
+-          this.playEnemyClip(e, e.attackClipIdx >= 0 ? e.attackClipIdx : e.phase2 ? 3 : 2);
++          this.playEnemyClip(e, e.attackClipIdx);
+           e.windUpTimer -= dt;
+           const pulse = 0.42 + Math.abs(Math.sin(performance.now() * 0.02)) * 0.45;
+           (e.telegraphRing.material as THREE.MeshBasicMaterial).opacity = pulse;
+-          e.telegraphRing.scale.setScalar(e.spec.isBoss ? (e.pattern === 2 ? 1.7 : e.pattern === 1 ? 1.25 : 1) : 1);
+-          e.modelWrap.position.y = Math.sin((1 - e.windUpTimer) * Math.PI) * (e.spec.isBoss ? 1.15 : 0.45);
++          e.telegraphRing.scale.setScalar(1);
++          const progress = 1 - e.windUpTimer / e.windUpDuration;
++          // Slime compresses, then jumps; skeleton and wolf keep planted feet.
++          if (e.spec.name.includes('史莱姆')) {
++            e.modelWrap.scale.y = 1 - Math.sin(progress * Math.PI) * 0.28;
++            e.modelWrap.position.y = Math.sin(progress * Math.PI) * 0.5;
++          }
+ 
+           if (e.windUpTimer <= 0) {
+-            // Execute strike!
++            // Execute strike, then leave a punishable recovery instead of instant tracking.
++            e.recoveryTimer = e.spec.isBoss ? (e.pattern === 2 ? 0.85 : 0.6) : 0.38;
++            onAttack?.(e, 'impact');
+             e.modelWrap.position.y = 0;
+             (e.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
+             e.attackCooldown = e.phase2 ? 1.35 : e.spec.isBoss ? 2.1 : 1.85;
+@@ -595,8 +614,9 @@
+             let isSlam = isBoss;
+             if (isBoss && e.pattern === 1) {
+               // Charge: close the gap before the hit.
+-              const chargeDir = new THREE.Vector3(playerPos.x - e.root.position.x, 0, playerPos.z - e.root.position.z).normalize();
++              const chargeDir = new THREE.Vector3(Math.sin(e.attackYaw), 0, Math.cos(e.attackYaw));
+               e.root.position.addScaledVector(chargeDir, 3.2);
++              resolveCollision?.(e.root.position);
+               hitRadius = 3.4;
+               isSlam = true;
+             } else if (isBoss && e.pattern === 2) {
+@@ -622,7 +642,10 @@
+               }
+             } else {
+               const currentDist = e.root.position.distanceTo(playerPos);
+-              if (currentDist <= hitRadius) {
++              const attackDirection = new THREE.Vector3(Math.sin(e.attackYaw), 0, Math.cos(e.attackYaw));
++              const facing = toPlayer.lengthSq() < 0.01 || toPlayer.clone().normalize().dot(attackDirection) > 0.1;
++              const radial = (isBoss && e.pattern === 2) || e.spec.name.includes('史莱姆');
++              if (currentDist <= hitRadius && (radial || facing)) {
+                 onHitPlayer({
+                   damage: e.phase3 ? Math.round(e.spec.atk * 1.65) : e.phase2 ? Math.round(e.spec.atk * 1.35) : e.spec.atk,
+                   enemyName: e.spec.name,
+@@ -661,7 +684,7 @@
+ 
+           if (e.vel.lengthSq() > 0.025) {
+             if (e.actions.length > 0) {
+-              this.playEnemyClip(e, e.moveClipIdx >= 0 ? e.moveClipIdx : 1);
++              this.playEnemyClip(e, e.moveClipIdx);
+               const act = e.actions[e.activeClipIdx];
+               if (act) act.timeScale = THREE.MathUtils.clamp(e.vel.length() / moveSpd, 0.6, 1.35);
+               e.modelWrap.position.y = 0;
+@@ -674,13 +697,33 @@
+           } else if (dist <= atkRange && e.attackCooldown <= 0) {
+             // Start telegraphed wind-up so player can dodge or counter!
+             if (e.spec.isBoss) {
+-              e.pattern = (e.pattern + 1) % 3;
++              // Bull commits to a charge, Hunshi to a ground burst, dragon to breath.
++              e.pattern = e.pattern === 0 ? (e.spec.name.includes('牛魔王') ? 1 : 2) : 0;
+               e.windUpTimer = [e.phase2 ? 0.68 : 0.9, 0.5, 1.15][e.pattern];
+             } else {
+-              e.windUpTimer = 0.65;
++              e.windUpTimer = e.spec.name.includes('骸骨') ? 0.85 : e.spec.name.includes('史莱姆') ? 1.05 : 0.55;
+             }
++            e.attackYaw = desiredYaw;
++            e.root.rotation.y = desiredYaw;
++            e.windUpDuration = e.windUpTimer;
++            const breath = e.spec.name.includes('龙') && e.pattern === 2;
++            const radial = (e.spec.isBoss && e.pattern === 2) || e.spec.name.includes('史莱姆');
++            const radius = breath ? 10 : e.spec.isBoss ? (e.pattern === 2 ? 7.4 : e.pattern === 1 ? 6.6 : e.phase2 ? 5.2 : 4.5) : 2.75;
++            const arc = radial && !breath ? Math.PI * 2 : breath ? 2 * Math.acos(0.42) : Math.PI * 0.94;
++            e.telegraphRing.geometry.dispose();
++            e.telegraphRing.geometry = new THREE.RingGeometry(0.12, radius, 48, 1, -Math.PI / 2 - arc / 2, arc);
++            (e.telegraphRing.material as THREE.MeshBasicMaterial).color.setHex(breath ? 0xffa346 : 0xff4936);
++            const action = e.actions[e.attackClipIdx];
++            if (action) {
++              e.actions.forEach(a => a.fadeOut(0.1));
++              action.reset().setLoop(THREE.LoopOnce, 1).fadeIn(0.08).play();
++              action.clampWhenFinished = true;
++              action.timeScale = action.getClip().duration / (e.windUpTimer + 0.15) / (e.phase3 ? 1.55 : e.phase2 ? 1.35 : 1);
++              e.activeClipIdx = e.attackClipIdx;
++            }
++            onAttack?.(e, 'tell');
+           } else {
+-            this.playEnemyClip(e, e.idleClipIdx >= 0 ? e.idleClipIdx : 0);
++            this.playEnemyClip(e, e.idleClipIdx);
+             e.modelWrap.rotation.x = 0;
+             e.modelWrap.rotation.z = 0;
+             e.modelWrap.position.y = 0;
+@@ -689,7 +732,7 @@
+           }
+         }
+       } else {
+-        this.playEnemyClip(e, e.idleClipIdx >= 0 ? e.idleClipIdx : 0);
++        this.playEnemyClip(e, e.idleClipIdx);
+       }
+ 
+       e.root.position.x = THREE.MathUtils.clamp(e.root.position.x, -32, 32);
+diff -ru /tmp/wukong-original-src/main.ts src/main.ts
+--- /tmp/wukong-original-src/main.ts	2026-11-21 21:52:35
++++ src/main.ts	2026-11-21 22:09:29
+@@ -1,7 +1,7 @@
++import { disposeObject } from './utils/disposeObject';
+ import './style.css';
+ import * as THREE from 'three';
+ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+-import { SparkRenderer } from '@sparkjsdev/spark';
+ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+ import { EffectComposer, RenderPass, EffectPass, BloomEffect, HueSaturationEffect, BrightnessContrastEffect, VignetteEffect } from 'postprocessing';
+ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+@@ -31,9 +31,6 @@
+ renderer.toneMappingExposure = 1.38;
+ 
+ const scene = new THREE.Scene();
+-const __debug: any = {};
+-const spark = new SparkRenderer({ renderer });
+-scene.add(spark);
+ const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 280);
+ camera.position.set(0, 6.5, 22);
+ 
+@@ -83,7 +80,10 @@
+ 
+ // Shared PBR environment: gives stone/bronze props readable reflections without an HDR download.
+ const pmrem = new THREE.PMREMGenerator(renderer);
+-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
++const room = new RoomEnvironment();
++scene.environment = pmrem.fromScene(room, 0.04).texture;
++room.dispose();
++pmrem.dispose();
+ scene.environmentIntensity = 0.18;
+ 
+ // EVA-like cinematic grade: desaturated, high-contrast, dark edges.
+@@ -93,6 +93,7 @@
+   performanceMode = low;
+   localStorage.setItem('wukong-performance', low ? '1' : '0');
+   renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, 1.25));
++  composer.setSize(window.innerWidth, window.innerHeight);
+   renderer.shadowMap.enabled = !low;
+   sunLight.castShadow = !low;
+   bloom.intensity = low ? 0.28 : 0.5;
+@@ -128,6 +129,8 @@
+ let bossCheckpoint = false;
+ let tutorialParryShown = false;
+ let chapterReady = false;
++let titleWorldAvailable = true;
++let chapterGeneration = 0;
+ let fireBurnCooldown = 0;
+ let lastComboVoice = 0;
+ let paused = false;
+@@ -139,10 +142,7 @@
+ let lightBuffer = 0;
+ let unlockedChapter = 0;
+ let hitStopTimer = 0;
+-let lowQuality = false;
+ let performanceMode = localStorage.getItem('wukong-performance') === '1';
+-let fpsTime = 0;
+-let fpsFrames = 0;
+ let lowHpPlayed = false;
+ let comboCount = 0;
+ let comboTimer = 0;
+@@ -165,7 +165,6 @@
+ let formFamiliar: THREE.Object3D | null = null;
+ let formAura: THREE.Mesh | null = null;
+ const learnedForms = new Set<string>();
+-const formSources = new Map<FormKind, THREE.Object3D>();
+ let bellCooldown = 0;
+ let bellPrompted = false;
+ const collectedSpirits = new Set<string>();
+@@ -223,7 +222,7 @@
+ const btnPauseSound = document.getElementById('btn-pause-sound') as HTMLButtonElement;
+ const btnPauseRestart = document.getElementById('btn-pause-restart')!;
+ const storySub = document.getElementById('story-sub')!;
+-const devMode = new URLSearchParams(location.search).has('dev');
++const devMode = new URLSearchParams(location.search).get('dev') === '1';
+ const chapterNav = document.querySelector('.chapter-nav') as HTMLElement | null;
+ if (chapterNav && !devMode) chapterNav.style.display = 'none';
+ const lowHp = document.getElementById('low-hp')!;
+@@ -260,6 +259,10 @@
+     showToast('先击败本回妖王，才能进入下一回');
+     return;
+   }
++  const generation = ++chapterGeneration;
++  vfx.clear();
++  hero.clearTransientEffects();
++  endForm();
+   currentChapter = THREE.MathUtils.clamp(idx, 0, ACTIVE_CHAPTERS.length - 1);
+   const cfg = ACTIVE_CHAPTERS[currentChapter];
+   chapterClearedTriggered = false;
+@@ -324,7 +327,8 @@
+ 
+   chapterBanner.classList.add('hidden');
+ 
+-  void world.loadChapter(cfg, gltfLoader);
++  if (!(titleWorldAvailable && currentChapter === 0)) void world.loadChapter(cfg, gltfLoader);
++  titleWorldAvailable = false;
+   void enemies.spawnChapterEnemies(cfg.enemies, gltfLoader, (x, z) => world.getTerrainHeight(x, z));
+   void heroModelPromise;
+   void enemies.ready();
+@@ -343,8 +347,8 @@
+   cinematicBoss = null;
+   cinematicTimer = 0;
+ 
+-  window.setTimeout(() => { showStory(`${cfg.code} · ${cfg.title}　|　妖王：${bossName}`, 3800); speak('boss-intro'); }, 1300);
+-  window.setTimeout(() => { audio.playBossRoar(); }, 1200);
++  window.setTimeout(() => { if (generation !== chapterGeneration) return; showStory(`${cfg.code} · ${cfg.title}　|　妖王：${bossName}`, 3800); speak('boss-intro'); }, 1300);
++  window.setTimeout(() => { if (generation === chapterGeneration) audio.playBossRoar(); }, 1200);
+ }
+ 
+ // Combat Actions
+@@ -400,8 +404,8 @@
+   formHud.classList.toggle('active', Boolean(currentForm));
+ }
+ 
+-function setFormFamiliar(_source: THREE.Object3D, kind: FormKind): void {
+-  if (formFamiliar) { formFamiliar.removeFromParent(); formFamiliar = null; }
++function setFormFamiliar(kind: FormKind): void {
++  if (formFamiliar) { formFamiliar.removeFromParent(); disposeObject(formFamiliar); formFamiliar = null; }
+   const c = document.createElement('canvas');
+   c.width = c.height = 128;
+   const g = c.getContext('2d')!;
+@@ -422,10 +426,9 @@
+   const isDragon = e.spec.modelCandidates.some((u) => u.includes('zhulong')) || e.spec.name.includes('龙');
+   const isWolf = e.spec.name.includes('狼') || e.spec.name.includes('狐');
+   const kind: FormKind = isDragon ? 'dragon' : isWolf ? 'wolf' : 'bull';
+-  formSources.set(kind, e.modelWrap);
+   if (!forms.includes(kind)) {
+     forms.push(kind);
+-    setFormFamiliar(e.modelWrap, kind);
++    setFormFamiliar(kind);
+     showStory(`收形 · ${FORM_INFO[kind].name}　按 V 借形，E 施展`, 3800);
+   }
+   updateFormHud();
+@@ -449,8 +452,7 @@
+   formIndex = (formIndex + 1) % forms.length;
+   currentForm = forms[formIndex];
+   formTimer = 10;
+-  const source = formSources.get(currentForm);
+-  if (source) setFormFamiliar(source, currentForm); else if (formFamiliar) formFamiliar.visible = true;
++  setFormFamiliar(currentForm);
+   const info = FORM_INFO[currentForm];
+   hero.bodyWrap.scale.setScalar(currentForm === 'bull' ? 1.12 : 1.03);
+   if (formFamiliar) formFamiliar.visible = true;
+@@ -664,7 +666,6 @@
+   spiritsFound = 0;
+   collectedSpirits.clear();
+   forms = [];
+-  formSources.clear();
+   learnedForms.clear();
+   currentForm = null;
+   formIndex = -1;
+@@ -783,9 +784,9 @@
+ };
+ 
+ function speak(name: string): void {
+-  audio.playVoice(name);
++  const duration = audio.playVoice(name);
+   const text = VOICE_TEXT[name];
+-  if (text) showStory(text, 2200);
++  if (text) showStory(text, Math.max(2200, duration * 1000 + 150));
+ }
+ 
+ function showStory(text: string, ms = 4200): void {
+@@ -812,7 +813,7 @@
+ }
+ 
+ function spawnSpiritOrbs(chapter: number): void {
+-  for (const o of spiritOrbs) scene.remove(o.group);
++  for (const o of spiritOrbs) { scene.remove(o.group); disposeObject(o.group); }
+   spiritOrbs = [];
+   const positions: Record<number, Array<[number, number]>> = {
+     0: [[-17, -2], [17, -6], [4, -27]],
+@@ -849,6 +850,7 @@
+   spiritsFound += 1;
+   chapterSpirits += 1;
+   scene.remove(orb.group);
++  disposeObject(orb.group);
+   spiritOrbs = spiritOrbs.filter((o) => o !== orb);
+   updateSpiritHud();
+   audio.playDingShenSpell();
+@@ -1032,11 +1034,20 @@
+   vfx.triggerPerfectDodgeSlowMo();
+ }
+ 
++// Debug references are installed once, only behind the explicit developer URL.
++if (devMode) {
++  (window as unknown as { __W: unknown }).__W = {
++    enemies, hero, world, camera, renderer, scene, audio, startChapter,
++    state: () => ({ currentChapter, unlockedChapter, gameStarted, chapterReady, performanceMode }),
++    unlockAll: () => { unlockedChapter = 2; updateChapterLocks(); },
++  };
++}
++
+ // Main 60fps Game Loop
+ let lastTime = performance.now();
+ 
+ function animate(now: number): void {
+-  (window as unknown as { __W: unknown }).__W = { enemies, hero, world, camera, renderer, scene, unlockAll: () => { unlockedChapter = 2; updateChapterLocks(); } };
++
+ requestAnimationFrame(animate);
+   let rawDt = Math.min(0.05, (now - lastTime) * 0.001);
+   lastTime = now;
+@@ -1045,17 +1056,6 @@
+     rawDt *= 0.12;
+   }
+ 
+-  fpsTime += rawDt; fpsFrames++;
+-  if (fpsTime > 2.5) {
+-    const fps = fpsFrames / fpsTime;
+-    if (!lowQuality && fps < 42) {
+-      lowQuality = true;
+-      renderer.setPixelRatio(1);
+-      renderer.shadowMap.enabled = false;
+-      bloom.intensity = 0.35;
+-    }
+-    fpsTime = 0; fpsFrames = 0;
+-  }
+ 
+   if (!gameStarted) {
+     // Cinematic slow camera orbit on Title Screen
+@@ -1111,7 +1111,7 @@
+     world.resolveCollision(hero.root.position, 0.45);
+ 
+     // 2. Check Wukong Staff Hit Detection during active swing window
+-    if (hero.attackTimer > 0.08 && hero.attackTimer < (hero.isFinisher ? 0.62 : 0.48) && !hero.hitDealtThisSwing) {
++    if (hero.attackTimer > 0.08 && hero.attackTimer < (hero.isHeavySlam ? 0.25 : hero.isFinisher ? 0.27 : 0.22) && !hero.hitDealtThisSwing) {
+       const reach = hero.isHeavySlam ? 5.6 : hero.isFinisher ? 4.3 : 3.5;
+       const fwd = new THREE.Vector3(Math.sin(hero.yaw), 0, Math.cos(hero.yaw));
+       const strikeCenter = hero.root.position.clone().addScaledVector(fwd, hero.isHeavySlam ? 2.4 : 1.5);
+@@ -1169,6 +1169,7 @@
+       c.atkCooldown -= dt;
+       if (c.life <= 0) {
+         scene.remove(c.root);
++        disposeObject(c.root);
+         hero.clones.splice(i, 1);
+         continue;
+       }
+@@ -1275,9 +1276,16 @@
+           );
+         }
+       },
+-      (p) => world.resolveCollision(p, 0.5)
++      (p) => world.resolveCollision(p, 0.5),
++      (enemy, stage) => {
++        if (stage === 'tell') audio.playAttackCue(enemy.spec.name.includes('龙') ? 'dragon' : enemy.spec.isBoss ? 'boss' : 'minion');
++        else {
++          audio.playEnemyImpact(enemy.spec.isBoss);
++          if (enemy.spec.isBoss) vfx.spawnShockwave(enemy.root.position, enemy.pattern === 2 ? 7.4 : 3.4, 0xff8a43);
++        }
++      }
+     );
+-    audio.inCombat = anyAggro;
++    audio.setCombat(anyAggro);
+     if (!tutorialParryShown && enemies.enemies.some((e) => !e.dead && e.windUpTimer > 0)) {
+       tutorialParryShown = true;
+       showStory('红光起 · 按 F 弹反；破防后再按 F 处决', 4200);
+@@ -1342,12 +1350,18 @@
+   }
+ 
+   // 7. Smooth 3rd-Person Action Follow Camera + Trauma Shake
++  const nearbyBoss = enemies.getActiveBoss();
++  const frameBoss = !lockTarget && nearbyBoss && nearbyBoss.root.position.distanceTo(hero.root.position) < 11 ? nearbyBoss : null;
++  if (frameBoss) {
++    const direction = Math.atan2(frameBoss.root.position.x - hero.root.position.x, frameBoss.root.position.z - hero.root.position.z);
++    camYaw = lerpAngle(camYaw, direction + Math.PI, Math.min(1, rawDt * 2.5));
++  }
+   const fireCam = currentChapter === 1 && !lockTarget;
+-  const camDist = lockTarget ? (lockTarget.spec.isBoss ? 8.6 : 6.4) : (hero.onNimbus ? 9.2 : fireCam ? 6.2 : 6.6);
++  const camDist = frameBoss ? 10 : lockTarget ? (lockTarget.spec.isBoss ? 8.6 : 6.4) : (hero.onNimbus ? 9.2 : fireCam ? 6.2 : 6.6);
+   const camHeight = hero.onNimbus ? 4.2 : fireCam ? 2.2 + camPitch * 3.2 : 2.6 + camPitch * 3.6;
+   const desiredCamPos = new THREE.Vector3(
+     hero.root.position.x + Math.sin(camYaw) * camDist,
+-    hero.root.position.y + camHeight,
++    hero.root.position.y + camHeight + (frameBoss ? 1 : 0),
+     hero.root.position.z + Math.cos(camYaw) * camDist
+   );
+   const camGround = world.getTerrainHeight(desiredCamPos.x, desiredCamPos.z) + 1.15;
+@@ -1383,7 +1397,7 @@
+   cd3.style.height = `${(hero.cdFan / 8.0) * 100}%`;
+ 
+   const boss = enemies.getActiveBoss();
+-  if (boss && boss.root.position.distanceTo(hero.root.position) < 30) {
++  if (boss && boss.root.position.distanceTo(hero.root.position) < 22) {
+     bossHud.classList.remove('hidden');
+     bossNameEl.textContent = boss.spec.name;
+     bossTitleEl.textContent = boss.spec.title ?? '';
+diff -ru /tmp/wukong-original-src/player/WukongController.ts src/player/WukongController.ts
+--- /tmp/wukong-original-src/player/WukongController.ts	2026-11-21 21:52:35
++++ src/player/WukongController.ts	2026-11-21 22:04:38
+@@ -1,3 +1,5 @@
++import { modelBounds } from '../utils/modelBounds';
++import { disposeObject } from '../utils/disposeObject';
+ import * as THREE from 'three';
+ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+ 
+@@ -188,18 +190,7 @@
+         if (!head.ok || (head.headers.get('content-type') || '').includes('text/html')) continue;
+         const gltf = await loader.loadAsync(url);
+         const m = gltf.scene;
+-        m.updateMatrixWorld(true);
+-        const box = new THREE.Box3();
+-        const tb = new THREE.Box3();
+-        m.traverse((o) => {
+-          const mesh = o as THREE.Mesh;
+-          if (!mesh.isMesh || !mesh.geometry) return;
+-          mesh.geometry.computeBoundingBox();
+-          if (!mesh.geometry.boundingBox) return;
+-          tb.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+-          box.union(tb);
+-        });
+-        if (box.isEmpty()) box.setFromObject(m);
++        const box = modelBounds(m, gltf.animations);
+         const sz = new THREE.Vector3();
+         const ctr = new THREE.Vector3();
+         box.getSize(sz);
+@@ -315,7 +306,7 @@
+     }
+     for (let i = 0; i < this.staffTrailMax; i++) {
+       const p = pts[Math.min(i, pts.length - 1)];
+-      const prev = pts[Math.max(0, i - 1)];
++      const prev = pts[Math.min(pts.length - 1, Math.max(0, i - 1))];
+       const next = pts[Math.min(pts.length - 1, i + 1)];
+       const dir = next.clone().sub(prev);
+       if (dir.lengthSq() < 0.0001) dir.set(0, 1, 0);
+@@ -409,6 +400,14 @@
+     return true;
+   }
+ 
++  public clearTransientEffects(): void {
++    for (const c of this.clones) { c.root.removeFromParent(); disposeObject(c.root); }
++    for (const img of this.afterimages) { img.mesh.removeFromParent(); disposeObject(img.mesh); }
++    this.clones = []; this.afterimages = [];
++    this.staffTrailPoints = [];
++    (this.staffTrail.material as THREE.MeshBasicMaterial).opacity = 0;
++  }
++
+   public summonHairClones(): boolean {
+     if (this.cdClone > 0 || this.mana < 25) return false;
+     this.mana -= 25;
+@@ -582,6 +581,7 @@
+       img.life -= dt;
+       if (img.life <= 0) {
+         this.scene.remove(img.mesh);
++        disposeObject(img.mesh);
+         this.afterimages.splice(i, 1);
+       } else {
+         ((img.mesh as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = img.life;
+Only in src: utils
+diff -ru /tmp/wukong-original-src/vfx/CombatVFX.ts src/vfx/CombatVFX.ts
+--- /tmp/wukong-original-src/vfx/CombatVFX.ts	2026-11-21 21:52:35
++++ src/vfx/CombatVFX.ts	2026-11-21 21:57:32
+@@ -1,3 +1,4 @@
++import { disposeObject } from '../utils/disposeObject';
+ import * as THREE from 'three';
+ 
+ interface SparkParticle {
+@@ -119,6 +120,14 @@
+     }, 650);
+   }
+ 
++  public clear(): void {
++    for (const s of this.sparks) { s.mesh.removeFromParent(); (s.mesh.material as THREE.Material).dispose(); }
++    for (const f of [...this.rings, ...this.flashes]) { f.mesh.removeFromParent(); disposeObject(f.mesh); }
++    this.sparks = []; this.rings = []; this.flashes = [];
++    this.hitStopTimer = 0; this.shakeIntensity = 0; this.timeScale = 1;
++    this.dmgContainer.replaceChildren();
++  }
++
+   public update(rawDt: number): number {
+     if (this.hitStopTimer > 0) {
+       this.hitStopTimer -= rawDt;
+@@ -133,6 +142,7 @@
+       s.life -= rawDt;
+       if (s.life <= 0) {
+         this.scene.remove(s.mesh);
++        (s.mesh.material as THREE.Material).dispose();
+         this.sparks.splice(i, 1);
+         continue;
+       }
+@@ -146,6 +156,7 @@
+       r.life -= rawDt;
+       if (r.life <= 0) {
+         this.scene.remove(r.mesh);
++        disposeObject(r.mesh);
+         this.rings.splice(i, 1);
+         continue;
+       }
+@@ -157,7 +168,7 @@
+     for (let i = this.flashes.length - 1; i >= 0; i--) {
+       const f = this.flashes[i];
+       f.life -= rawDt;
+-      if (f.life <= 0) { this.scene.remove(f.mesh); this.flashes.splice(i, 1); continue; }
++      if (f.life <= 0) { this.scene.remove(f.mesh); disposeObject(f.mesh); this.flashes.splice(i, 1); continue; }
+       const k = 1 - f.life / 0.16;
+       f.mesh.scale.setScalar(1 + k * 2.4);
+       (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.9 - k);
+diff -ru /tmp/wukong-original-src/world/ChapterWorld.ts src/world/ChapterWorld.ts
+--- /tmp/wukong-original-src/world/ChapterWorld.ts	2026-11-21 21:52:35
++++ src/world/ChapterWorld.ts	2026-11-21 22:16:03
+@@ -1,5 +1,6 @@
++import { disposeObject } from '../utils/disposeObject';
+ import * as THREE from 'three';
+-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
++import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+ import type { ChapterConfig } from '../data/ChaptersData';
+ 
+ export interface PeachPickup {
+@@ -36,7 +37,10 @@
+   private petals: THREE.Points | null = null;
+   private waterfallMesh: THREE.Mesh | null = null;
+   private skyDome: THREE.Mesh | null = null;
++  private fireTime = { value: 0 };
++  private particleTexture: THREE.CanvasTexture | null = null;
+   private generation = 0;
++  private propTemplates = new Map<string, Promise<GLTF>>();
+ 
+   constructor(private scene: THREE.Scene) {
+     this.scene.add(this.worldGroup);
+@@ -48,7 +52,7 @@
+     const rim = Math.max(0, r - 18) * 0.16;
+     const undulation =
+       Math.sin(x * 0.14) * Math.cos(z * 0.14) * (this.currentChapterIdx === 2 ? 0.12 : 0.32);
+-    return undulation + rim;
++    return undulation * THREE.MathUtils.smoothstep(r, 18, 28) + rim;
+   }
+ 
+   public async loadChapter(config: ChapterConfig, loader: GLTFLoader): Promise<void> {
+@@ -58,7 +62,7 @@
+ 
+     // Update sky & atmospheric fog
+     this.scene.background = new THREE.Color(config.skyColor);
+-    this.scene.fog = new THREE.FogExp2(config.fogColor, 0.0135);
++    this.scene.fog = new THREE.FogExp2(config.fogColor, config.index === 1 ? 0.032 : config.index === 2 ? 0.024 : 0.028);
+ 
+     // 1. Sculpted vertex-colored 3D terrain mesh + ancient stone boss plaza
+     this.buildSculptedTerrain(config);
+@@ -90,7 +94,7 @@
+       const mesh = ch as THREE.Mesh;
+       if (mesh.isMesh && (mesh.geometry as THREE.BufferGeometry)?.type === 'SphereGeometry') {
+         const wp = mesh.getWorldPosition(new THREE.Vector3());
+-        if (Math.hypot(wp.x, wp.z) > 18) this.worldGroup.remove(ch);
++        if (Math.hypot(wp.x, wp.z) > 18) { this.worldGroup.remove(ch); disposeObject(ch); }
+       }
+     }
+ 
+@@ -102,25 +106,11 @@
+   }
+ 
+   private disposeSceneObject(root: THREE.Object3D, mats: Set<THREE.Material>, geos: Set<THREE.BufferGeometry>, texs: Set<THREE.Texture>): void {
+-    root.traverse((o) => {
+-      const mesh = o as THREE.Mesh;
+-      if (!mesh.isMesh) return;
+-      if (mesh.geometry && !geos.has(mesh.geometry)) { geos.add(mesh.geometry); mesh.geometry.dispose(); }
+-      const list = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as THREE.Material[];
+-      for (const raw of list) {
+-        const mat = raw as THREE.MeshStandardMaterial;
+-        if (!mat || mats.has(mat)) continue;
+-        mats.add(mat);
+-        for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'alphaMap', 'bumpMap', 'displacementMap', 'aoMap'] as const) {
+-          const tex = (mat as unknown as Record<string, THREE.Texture | null>)[key];
+-          if (tex && !texs.has(tex)) { texs.add(tex); tex.dispose(); }
+-        }
+-        mat.dispose();
+-      }
+-    });
++    disposeObject(root, mats, geos, texs);
+   }
+ 
+   private clearWorld(): void {
++    this.propTemplates.clear();
+     const mats = new Set<THREE.Material>();
+     const geos = new Set<THREE.BufferGeometry>();
+     const texs = new Set<THREE.Texture>();
+@@ -129,8 +119,11 @@
+       this.worldGroup.remove(ch);
+       this.disposeSceneObject(ch, mats, geos, texs);
+     }
++    this.particleTexture = null;
+     this.peaches = [];
+     this.colliders = [];
++    this.landmarkMixer?.stopAllAction();
++    if (this.landmarkMixer) this.landmarkMixer.uncacheRoot(this.landmarkMixer.getRoot());
+     this.landmarkMixer = null;
+     this.dragonUniforms = [];
+     this.dragonAttackUniforms = [];
+@@ -228,9 +221,7 @@
+     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+     geo.computeVertexNormals();
+ 
+-    const groundTex = this.makeGroundTexture();
+     const terrainMat = new THREE.MeshStandardMaterial({
+-      bumpMap: groundTex,
+       bumpScale: 0.2,
+       vertexColors: true,
+       roughness: config.index === 2 ? 0.45 : 0.9,
+@@ -447,13 +438,24 @@
+     });
+   }
+ 
++  private async loadProp(url: string, loader: GLTFLoader): Promise<THREE.Group> {
++    // Chapter-scoped template: repeated stones/lanterns share one decode and GPU resources.
++    let pending = this.propTemplates.get(url);
++    if (!pending) { pending = loader.loadAsync(url); this.propTemplates.set(url, pending); }
++    const gltf = await pending;
++    return gltf.scene.clone(true);
++  }
++
+   private async loadHuaguoshanProps(loader: GLTFLoader, priorityOnly: boolean): Promise<void> {
+     const gen = this.generation;
+     const defs: Array<{ file: string; x: number; z: number; h: number }> = [
++      { file: 'moss-rock', x: -10, z: -28, h: 8.5 },
++      { file: 'moss-rock', x: 11, z: -28, h: 7.8 },
++      { file: 'moss-rock', x: -19, z: -22, h: 6 },
+       { file: 'moss-rock', x: -14, z: -3, h: 2.8 },
+       { file: 'moss-rock', x: 14, z: -5, h: 2.2 },
+-      { file: 'stone-lantern', x: -5.5, z: 2, h: 3.0 },
+-      { file: 'stone-lantern', x: 5.5, z: -2, h: 3.0 },
++      { file: 'stone-lantern', x: -6, z: 2, h: 1.65 },
++      { file: 'stone-lantern', x: 6, z: -2, h: 1.65 },
+       { file: 'guardian-statue', x: -8.5, z: -10.5, h: 3.4 },
+       { file: 'guardian-statue', x: 8.5, z: -10.5, h: 3.4 },
+       { file: 'peach-branch', x: 12, z: 4, h: 4.0 },
+@@ -467,27 +469,28 @@
+       { file: 'tree-stump-01', x: 13, z: 3, h: 1.2 },
+       { file: 'red-banner', x: -7, z: -6, h: 4.0 },
+       { file: 'red-banner', x: 7, z: -6, h: 4.0 },
+-      { file: 'incense-burner', x: -3, z: 7, h: 2.0 },
+-      { file: 'hanging-lantern', x: 4, z: 7, h: 2.0 },
++      { file: 'incense-burner', x: -6.5, z: 6, h: 1.2 },
++      { file: 'hanging-lantern', x: 6.5, z: 6, h: 0.9 },
+       { file: 'cliff-rock', x: -23, z: -12, h: 6.0 },
+       { file: 'peach-tree-single', x: -18, z: 10, h: 7.2 },
+     ];
+     const priority = new Set(['stone-lantern', 'peach-branch']);
+     const chosen = defs.filter((d) => priorityOnly ? priority.has(d.file) : !priority.has(d.file));
+-    await Promise.all(chosen.map(async (d) => {
++    for (const d of chosen) {
++      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
++      if (gen !== this.generation) return;
+       try {
+-        const gltf = await loader.loadAsync(`models/live-opt/${d.file}.glb`);
+-        if (this.generation !== gen || this.currentChapterIdx !== 0) return;
+-        if (this.currentChapterIdx !== 0) { gltf.scene.traverse((o) => { if ((o as THREE.Mesh).isMesh) ((o as THREE.Mesh).geometry as THREE.BufferGeometry).dispose(); }); return; }
++        const gltf = { scene: await this.loadProp(`models/live-opt/${d.file}.glb`, loader) };
++        if (this.generation !== gen || this.currentChapterIdx !== 0) { disposeObject(gltf.scene); return; }
+         const m = gltf.scene;
+         const box = new THREE.Box3().setFromObject(m);
+         const size = new THREE.Vector3(); const ctr = new THREE.Vector3();
+         box.getSize(size); box.getCenter(ctr);
+         const s = d.h / Math.max(0.01, size.y);
+-        if (!Number.isFinite(s) || s > 8) return;
++        if (!Number.isFinite(s) || s > 1000) { disposeObject(m); return; }
+         m.scale.setScalar(s);
+         const y = this.getTerrainHeight(d.x, d.z);
+-        m.position.set(d.x - ctr.x * s, y - box.min.y * s, d.z - ctr.z * s);
++        m.position.set(d.x - ctr.x * s, y - box.min.y * s - (d.file === 'moss-rock' ? d.h * 0.16 : 0), d.z - ctr.z * s);
+         m.traverse((o) => {
+           if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; }
+         });
+@@ -498,7 +501,7 @@
+       } catch {
+         // optional prop
+       }
+-    }));
++    }
+   }
+ 
+   public resolveCollision(pos: THREE.Vector3, radius = 0.45): void {
+@@ -541,7 +544,7 @@
+           { file: 'guardian-statue', x: -9, z: -10, h: 3.4 },
+           { file: 'guardian-statue', x: 9, z: -10, h: 3.4 },
+               { file: 'moon-gate', x: 20, z: -12, h: 5.5 },
+-          { file: 'hanging-lantern', x: 4, z: 7, h: 2.0 },
++          { file: 'hanging-lantern', x: 6.5, z: 6, h: 0.9 },
+           { file: 'bronze-ding', x: -7, z: 6, h: 2.4 },
+           { file: 'stone-memorial-arch', x: 19, z: -16, h: 6.5 },
+           { file: 'cloud-platform', x: 18, z: 10, h: 2.0 },
+@@ -551,19 +554,21 @@
+         ];
+     const priority = new Set(config.index === 1 ? ['war-drum', 'fire-brazier'] : ['stone-lantern', 'celestial-bell']);
+     const chosen = defsByChapter.filter((d) => priorityOnly ? priority.has(d.file) : !priority.has(d.file));
+-    await Promise.all(chosen.map(async (d) => {
++    for (const d of chosen) {
++      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
++      if (gen !== this.generation) return;
+       try {
+-        const gltf = await loader.loadAsync(`models/live-opt/${d.file}.glb`);
+-        if (this.generation !== gen || this.currentChapterIdx !== config.index) return;
++        const gltf = { scene: await this.loadProp(`models/live-opt/${d.file}.glb`, loader) };
++        if (this.generation !== gen || this.currentChapterIdx !== config.index) { disposeObject(gltf.scene); return; }
+         const m = gltf.scene;
+         const box = new THREE.Box3().setFromObject(m);
+         const size = new THREE.Vector3(); const ctr = new THREE.Vector3();
+         box.getSize(size); box.getCenter(ctr);
+         const s = d.h / Math.max(0.01, size.y);
+-        if (!Number.isFinite(s) || s > 8) return;
++        if (!Number.isFinite(s) || s > 1000) { disposeObject(m); return; }
+         m.scale.setScalar(s);
+         const y = this.getTerrainHeight(d.x, d.z);
+-        m.position.set(d.x - ctr.x * s, y - box.min.y * s, d.z - ctr.z * s);
++        m.position.set(d.x - ctr.x * s, y - box.min.y * s - (d.file === 'moss-rock' ? d.h * 0.16 : 0), d.z - ctr.z * s);
+         m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+         this.worldGroup.add(m);
+         const radius = Math.max(size.x, size.z) * s * 0.42;
+@@ -571,7 +576,7 @@
+       } catch {
+         // optional prop
+       }
+-    }));
++    }
+   }
+ 
+   private async loadLandmark(config: ChapterConfig, loader: GLTFLoader): Promise<void> {
+@@ -582,7 +587,7 @@
+         const head = await fetch(url, { method: 'HEAD' });
+         if (!head.ok || (head.headers.get('content-type') || '').includes('text/html')) continue;
+         const gltf = await loader.loadAsync(url);
+-        if (this.generation !== gen || this.currentChapterIdx !== config.index) return;
++        if (this.generation !== gen || this.currentChapterIdx !== config.index) { disposeObject(gltf.scene); return; }
+ 
+         const m = gltf.scene;
+         const box = new THREE.Box3().setFromObject(m);
+@@ -593,7 +598,7 @@
+ 
+         const targetHeight = config.index === 2 ? 15.5 : 12.5;
+         const s = targetHeight / Math.max(0.01, sz.y);
+-        if (!Number.isFinite(s) || s > 8) return;
++        if (!Number.isFinite(s) || s > 1000) { disposeObject(m); return; }
+         m.scale.setScalar(s);
+         const [lx, lz] = config.landmarkPos;
+         const ly = this.getTerrainHeight(lx, lz);
+@@ -623,15 +628,24 @@
+ 
+   private buildHuaguoshanBiome(): void {
+     // Cascading Water Curtain Cave Waterfall (水帘洞飞瀑) behind the landmark
+-    const wfMat = new THREE.MeshBasicMaterial({
+-      color: 0x9ceeff,
+-      transparent: true,
+-      opacity: 0.46,
+-      side: THREE.DoubleSide,
+-    });
+-    this.waterfallMesh = new THREE.Mesh(new THREE.PlaneGeometry(11, 18, 8, 16), wfMat);
+-    this.waterfallMesh.position.set(0, 8.2, -29);
+-    this.worldGroup.add(this.waterfallMesh);
++    // A volumetric curtain of narrow water strands leaves the gateway readable.
++    // Shared instanced geometry avoids the previous opaque 11m billboard.
++    const water = new THREE.InstancedMesh(
++      new THREE.CylinderGeometry(0.018, 0.045, 1, 5),
++      new THREE.MeshBasicMaterial({ color: 0x9bd8dc, transparent: true, opacity: 0.24, depthWrite: false }),
++      48
++    );
++    const strand = new THREE.Object3D();
++    for (let i = 0; i < 48; i++) {
++      const x = (i / 47 - 0.5) * 7.5;
++      const height = 7 + Math.sin(i * 2.3) * 1.5;
++      strand.position.set(x, height / 2 + 0.4, -29 + Math.sin(i * 1.7) * 0.45);
++      strand.scale.set(1, height, 1); strand.updateMatrix();
++      water.setMatrixAt(i, strand.matrix);
++    }
++    water.instanceMatrix.needsUpdate = true;
++    this.waterfallMesh = water;
++    this.worldGroup.add(water);
+ 
+     // Immortal Peach Blossom Trees & mossy cliffs flanking the path
+     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4d3427, roughness: 0.85 });
+@@ -702,7 +716,7 @@
+     this.worldGroup.add(moon);
+     const halo = new THREE.Mesh(
+       new THREE.CircleGeometry(8.2, 40),
+-      new THREE.MeshBasicMaterial({ color: 0xffb86b, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false })
++      new THREE.MeshBasicMaterial({ color: 0xffb86b, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending })
+     );
+     halo.position.set(0, 15, -42.1);
+     this.worldGroup.add(halo);
+@@ -757,11 +771,13 @@
+   }
+ 
+   private async buildFlamingMountainBiome(hasBarrier: boolean, loader: GLTFLoader): Promise<void> {
++    const gen = this.generation;
+     // Load Aholo Plantain Fan relic pedestal near spawn as visual lore cue
+     try {
+       const head = await fetch('models/plantain-fan.glb', { method: 'HEAD' });
+       if (head.ok && !(head.headers.get('content-type') || '').includes('text/html')) {
+         const gltf = await loader.loadAsync('models/plantain-fan.glb');
++        if (gen !== this.generation) { disposeObject(gltf.scene); return; }
+         const fan = gltf.scene;
+         fan.scale.setScalar(2.2);
+         fan.position.set(-4.5, this.getTerrainHeight(-4.5, 11) + 1.4, 11);
+@@ -771,6 +787,7 @@
+       // optional prop
+     }
+ 
++    if (gen !== this.generation) return;
+     // Lava fissures and ash haze: break up the flat brown plane.
+     const lc = document.createElement('canvas');
+     lc.width = lc.height = 512;
+@@ -857,37 +874,27 @@
+       const geo = new THREE.BufferGeometry();
+       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+       geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+-      const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.16, vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
++      const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map: this.getParticleTexture(), depthWrite: false, size: 0.16, vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending }));
+       this.fireWallParticles = pts;
+       this.fireWallGroup.add(pts);
+-      const fc = document.createElement('canvas');
+-      fc.width = 512; fc.height = 256;
+-      const fx = fc.getContext('2d')!;
+-      fx.clearRect(0, 0, 512, 256);
+-      for (let i = 0; i < 26; i++) {
+-        const bx = 8 + i * 19 + Math.random() * 10;
+-        const bh = 90 + Math.random() * 140;
+-        const fg = fx.createLinearGradient(0, 256, 0, 256 - bh);
+-        fg.addColorStop(0, 'rgba(255,240,190,0.9)');
+-        fg.addColorStop(0.45, 'rgba(255,145,30,0.7)');
+-        fg.addColorStop(1, 'rgba(255,40,4,0)');
+-        fx.fillStyle = fg;
+-        fx.beginPath();
+-        fx.moveTo(bx, 256);
+-        fx.bezierCurveTo(bx - 22, 210, bx + 14, 256 - bh * 0.55, bx + (Math.random() - 0.5) * 22, 256 - bh);
+-        fx.bezierCurveTo(bx + 28, 256 - bh * 0.55, bx + 24, 220, bx + 18, 256);
+-        fx.fill();
++      // Three-dimensional flame volumes, not a wall-sized billboard.
++      const flameGeo = new THREE.LatheGeometry([
++        new THREE.Vector2(0, 0), new THREE.Vector2(0.32, 0.08),
++        new THREE.Vector2(0.5, 0.45), new THREE.Vector2(0.32, 1.0),
++        new THREE.Vector2(0.16, 1.7), new THREE.Vector2(0, 2.4),
++      ], 10);
++      const flameMat = new THREE.MeshBasicMaterial({ color: 0xff721c, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false });
++      flameMat.onBeforeCompile = shader => {
++        shader.uniforms.uFlameTime = this.fireTime;
++        shader.vertexShader = 'uniform float uFlameTime; varying float vFlameY;\n' + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vFlameY = position.y; transformed.x += sin(uFlameTime * 4.0 + modelMatrix[3].x * 2.3 + position.y * 2.0) * position.y * 0.12;');
++        shader.fragmentShader = 'varying float vFlameY;\n' + shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(vec3(1.0, 0.8, 0.24), diffuseColor.rgb, smoothstep(0.0, 1.3, vFlameY)); diffuseColor.a *= 1.0 - smoothstep(0.25, 2.4, vFlameY);');
++      };
++      for (let i = 0; i < 48; i++) {
++        const flame = new THREE.Mesh(flameGeo, flameMat);
++        flame.position.set((i % 24 - 11.5) * 1.12, 0.05, i < 24 ? -0.35 : 0.45);
++        flame.scale.set(1.1, 1.1 + (Math.sin(i * 3.7) + 1) * 0.35, 1);
++        this.fireWallGroup.add(flame);
+       }
+-      const wallTex = new THREE.CanvasTexture(fc);
+-      wallTex.colorSpace = THREE.SRGBColorSpace;
+-      const flameWall = new THREE.Mesh(
+-        new THREE.PlaneGeometry(27, 6.6),
+-        new THREE.MeshBasicMaterial({ map: wallTex, transparent: true, opacity: 0.72, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+-      );
+-      wallTex.wrapS = wallTex.wrapT = THREE.RepeatWrapping;
+-      flameWall.position.set(0, 3.1, 0);
+-      this.fireWallGroup.add(flameWall);
+-      this.fireWallPlane = flameWall;
+ 
+       const fireLight = new THREE.PointLight(0xff5522, 5, 22);
+       fireLight.position.set(0, 3, 0);
+@@ -1011,6 +1018,7 @@
+   }
+ 
+   public updateAmbient(dt: number, time: number): void {
++    this.fireTime.value = time;
+     if (this.landmarkMixer) this.landmarkMixer.update(dt);
+     for (const u of this.dragonUniforms) u.value = time;
+     if (this.fireWallGlow) (this.fireWallGlow.material as THREE.MeshBasicMaterial).opacity = 0.72 + Math.sin(time * 7) * 0.12;
+@@ -1048,6 +1056,19 @@
+     }
+   }
+ 
++  private getParticleTexture(): THREE.CanvasTexture {
++    if (this.particleTexture) return this.particleTexture;
++    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 32;
++    const ctx = canvas.getContext('2d')!;
++    const gradient = ctx.createRadialGradient(16,16,1,16,16,15);
++    gradient.addColorStop(0,'rgba(255,255,255,1)');
++    gradient.addColorStop(0.35,'rgba(255,255,255,0.65)');
++    gradient.addColorStop(1,'rgba(255,255,255,0)');
++    ctx.fillStyle=gradient;ctx.fillRect(0,0,32,32);
++    this.particleTexture = new THREE.CanvasTexture(canvas);
++    return this.particleTexture;
++  }
++
+   private buildAmbientParticles(chapterIdx: number): void {
+     const count = 220;
+     const positions = new Float32Array(count * 3);
+@@ -1059,7 +1080,7 @@
+     const geo = new THREE.BufferGeometry();
+     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+     const color = chapterIdx === 1 ? 0xff6d2e : chapterIdx === 2 ? 0xffe28a : 0xa8ffdf;
+-    const mat = new THREE.PointsMaterial({
++    const mat = new THREE.PointsMaterial({ map: this.getParticleTexture(), depthWrite: false,
+       color,
+       size: 0.22,
+       transparent: true,
+@@ -1078,7 +1099,7 @@
+       }
+       const pg = new THREE.BufferGeometry();
+       pg.setAttribute('position', new THREE.BufferAttribute(pp, 3));
+-      this.petals = new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xff9fbd, size: 0.16, transparent: true, opacity: 0.78, depthWrite: false }));
++      this.petals = new THREE.Points(pg, new THREE.PointsMaterial({ map: this.getParticleTexture(), depthWrite: false, color: 0xff9fbd, size: 0.16, transparent: true, opacity: 0.78 }));
+       this.worldGroup.add(this.petals);
+     }
+   }
+@@ -1086,7 +1107,7 @@
+   public extinguishFireWall(): boolean {
+     if (!this.fireWallActive) return false;
+     this.fireWallActive = false;
+-    this.worldGroup.remove(this.fireWallGroup);
++    this.fireWallGroup.visible = false;
+     return true;
+   }
+ 
+@@ -1098,16 +1119,11 @@
+     // Animate waterfall shimmer
+     if (this.waterfallMesh) {
+       (this.waterfallMesh.material as THREE.MeshBasicMaterial).opacity =
+-        0.38 + Math.sin(t * 6) * 0.1;
++        0.24 + Math.sin(t * 6) * 0.06;
+     }
+ 
+     // Animate Three-Samadhi Fire Wall & block player until extinguished by [3] Plantain Fan!
+     if (this.fireWallActive) {
+-      this.fireWallGroup.children.forEach((ch, idx) => {
+-        if ((ch as THREE.Mesh).isMesh) {
+-          ch.scale.y = 0.85 + Math.abs(Math.sin(t * 7 + idx)) * 0.42;
+-        }
+-      });
+       if (Math.abs(playerPos.z - this.fireWallZ) < 1.8 && Math.abs(playerPos.x) < 15) {
+         playerPos.z = this.fireWallZ + 2.1;
+         fireBurn = true;
+@@ -1121,7 +1137,7 @@
+       p.mesh.position.y += Math.sin(t * 3.2) * 0.004;
+       if (p.mesh.position.distanceTo(playerPos) < 1.85) {
+         p.collected = true;
+-        this.worldGroup.remove(p.mesh);
++        p.mesh.visible = false;
+         healed = true;
+       }
+     }

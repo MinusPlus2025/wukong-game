@@ -1,25 +1,35 @@
-# Audio QA — Wukong 3-chapter build
+# 2026-11-21 音频复测
 
-## Measured (ffmpeg ebur128)
+内部已测：文件响度、运行时播放状态与总线逻辑。未完成：真人听辨、扬声器/耳机听感、每句语音逐字独立转录。
 
-| Asset | Integrated | True peak |
+原始音频来源沿用既有项目记录：Edge Yunjian TTS 14句，非演员、非声线克隆。本轮不新增在线音频服务或授权不明声音。
+
+## 原始测量与修正
+
+旧文档“统一约−16 LUFS”不准确：原语音 −11.0～−17.7 LUFS，多数真峰值0dBFS。
+本轮只作可复现的线性衰减：`gain = min(-2, -18 - measuredLUFS)` dB，不改变台词、速度或音色。
+调整后 14句 −18.0～−19.7 LUFS，真峰值≤−2dBFS。原始已有削波不能通过衰减恢复。
+
+| 文件/类别 | LUFS | 真峰值 |
 |---|---:|---:|
-| BGM battle.mp3 (original 64s loop) | -12.7 LUFS | -1.4 dBFS |
-| Voice start.wav (standard Mandarin, normalized) | -13.7 LUFS | 0.0 dBFS |
-| Voice boss-intro.wav (standard Mandarin) | -15.2 LUFS | 0.0 dBFS |
-| Ambience fire.mp3 | -37.9 LUFS | -9.5 dBFS |
+| start.wav（调整后） | -18.0 | -4.3 dBFS |
+| boss-intro.wav（调整后） | -18.0 | -2.8 dBFS |
+| battle.mp3（原64秒音乐） | -12.7 | -1.4 dBFS |
+| forest.mp3 | -23.4 | -9.4 dBFS |
+| fire.mp3 | -37.9 | -9.5 dBFS |
+| heaven.mp3 | -24.0 | -9.7 dBFS |
 
-## Mix chain
+全部语音/BGM/环境/SFX测量在 `qa/2026-11-21/audio-final.json`。
+命令：`ffmpeg -hide_banner -i FILE -af ebur128=peak=true -f null -`。
 
-- All buses -> Gain(0.58) -> Limiter(-1 dBFS) -> destination
-- BGM player -15 dB; combat duck -21 dB, restores -15 dB
-- Voice player 0 dB, source normalized around -16 LUFS
-- Ambience player -20 dB, -20 dB below dialogue
-- SFX player -5 dB
-- BGM / voice / ambience are crossfaded on chapter change and pause.
+## 运行时改变
 
-## Caveats
+- 修复首次 ambient 在 isReady=false 时被重新挂起、从未启动的问题；浏览器确认 ambient state=started。
+- 单路语音：新句停止旧句；字幕展示时长取实际 buffer duration（最少2.2秒）。
+- 语音期间 BGM -23dB、环境 -26dB；按实际句长+100ms释放，600ms恢复。替代旧固定1.8秒计时器。
+- BGM 按探索/战斗/狂暴取 -22/-16/-13dB，不再对整首音乐升调。
+- 三种前摇音高提示、落击音效，与敌人 AI 出招事件联动。保持现有原创音乐和SFX文件，不能称为全新配乐。
+- 同一帧多事件的单声源使用至少5ms递增调度，修复 Tone “Start time must be strictly greater” 异常。
+- 总增益0.58，输出和录制均经过−1dB limiter；取消静音恢复也回到0.58。
 
-- Headless Chrome cannot audition sound; these are file and bus measurements, not human listening.
-- Voice is TTS (Edge Yunjian), standard Mandarin, exact subtitle text, no regional particles. Not an actor.
-- A human must still check: dialogue intelligibility over boss phase, no clipping on laptop speakers, ambience not masking cues.
+环境文件之间仍有响度差（火山较低）；实际混合后的听感没有人工确认。没有依据声称“无方言/逐字完全一致/演员质感”已通过验收。

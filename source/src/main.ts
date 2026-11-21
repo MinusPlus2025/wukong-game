@@ -1,9 +1,10 @@
+import { disposeObject } from './utils/disposeObject';
 import './style.css';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { SparkRenderer } from '@sparkjsdev/spark';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { EffectComposer, RenderPass, EffectPass, BloomEffect, HueSaturationEffect, BrightnessContrastEffect, VignetteEffect } from 'postprocessing';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { WUKONG_CHAPTERS } from './data/ChaptersData';
 
 // v2: one polished Huaguoshan boss fight. Other chapters stay in data but are not exposed.
@@ -23,15 +24,13 @@ const renderer = new THREE.WebGLRenderer({
   powerPreference: 'high-performance',
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.38;
 
 const scene = new THREE.Scene();
-const spark = new SparkRenderer({ renderer });
-scene.add(spark);
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 280);
 camera.position.set(0, 6.5, 22);
 
@@ -55,7 +54,7 @@ scene.add(hemiLight);
 const sunLight = new THREE.DirectionalLight(0xffd09a, 2.35);
 sunLight.position.set(18, 32, 20);
 sunLight.castShadow = true;
-sunLight.shadow.mapSize.set(1024, 1024);
+sunLight.shadow.mapSize.set(2048, 2048);
 sunLight.shadow.camera.near = 2;
 sunLight.shadow.camera.far = 95;
 const d = 34;
@@ -79,8 +78,29 @@ const bloom = new BloomEffect({
 });
 composer.addPass(new EffectPass(camera, bloom));
 
+// Shared PBR environment: gives stone/bronze props readable reflections without an HDR download.
+const pmrem = new THREE.PMREMGenerator(renderer);
+const room = new RoomEnvironment();
+scene.environment = pmrem.fromScene(room, 0.04).texture;
+room.dispose();
+pmrem.dispose();
+scene.environmentIntensity = 0.18;
+
 // EVA-like cinematic grade: desaturated, high-contrast, dark edges.
 
+
+function applyQuality(low: boolean): void {
+  performanceMode = low;
+  localStorage.setItem('wukong-performance', low ? '1' : '0');
+  renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, 1.25));
+  composer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = !low;
+  sunLight.castShadow = !low;
+  bloom.intensity = low ? 0.28 : 0.5;
+  const btn = document.getElementById('btn-pause-quality');
+  if (btn) btn.textContent = low ? '画质：性能' : '画质：高';
+  showToast(low ? '性能模式 · 阴影/像素比已降' : '高画质 · 阴影恢复');
+}
 
 // Subsystems
 const gltfLoader = new GLTFLoader();
@@ -90,7 +110,7 @@ const vfx = new CombatVFX(scene, camera);
 const world = new ChapterWorld(scene);
 const enemies = new EnemyManager(scene, camera);
 const hero = new WukongController(scene);
-hero.loadHeroModel(gltfLoader);
+const heroModelPromise = hero.loadHeroModel(gltfLoader);
 void hero.loadStaffModel(gltfLoader);
 
 // Game State
@@ -109,14 +129,20 @@ let chapterClearedTriggered = false;
 let bossCheckpoint = false;
 let tutorialParryShown = false;
 let chapterReady = false;
+let titleWorldAvailable = true;
+let chapterGeneration = 0;
 let fireBurnCooldown = 0;
 let lastComboVoice = 0;
 let paused = false;
 let cinematicTimer = 0;
 let cinematicBoss: ActiveEnemy | null = null;
-let lowQuality = false;
-let fpsTime = 0;
-let fpsFrames = 0;
+let phaseTimer = 0;
+let phaseBoss: ActiveEnemy | null = null;
+let phase3Announced = false;
+let lightBuffer = 0;
+let unlockedChapter = 0;
+let hitStopTimer = 0;
+let performanceMode = localStorage.getItem('wukong-performance') === '1';
 let lowHpPlayed = false;
 let comboCount = 0;
 let comboTimer = 0;
@@ -126,6 +152,19 @@ let chapterDamage = 0;
 let chapterStartedAt = 0;
 let chapterRank = 'B';
 let ngPlus = 0;
+type FormKind = 'bull' | 'dragon' | 'wolf';
+const FORM_INFO: Record<FormKind, { name: string; color: number; hp: number; speed: number }> = {
+  bull: { name: '牛魔形', color: 0xff5638, hp: 90, speed: 0.9 },
+  dragon: { name: '天龙形', color: 0x58d7ff, hp: 30, speed: 1.08 },
+  wolf: { name: '狼妖形', color: 0x9fe8a8, hp: 20, speed: 1.22 },
+};
+let forms: FormKind[] = [];
+let formIndex = -1;
+let currentForm: FormKind | null = null;
+let formTimer = 0;
+let formFamiliar: THREE.Object3D | null = null;
+let formAura: THREE.Mesh | null = null;
+const learnedForms = new Set<string>();
 let bellCooldown = 0;
 let bellPrompted = false;
 const collectedSpirits = new Set<string>();
@@ -147,6 +186,9 @@ const bossPostureFill = document.getElementById('boss-posture-fill')!;
 const bossIntro = document.getElementById('boss-intro')!;
 const bossIntroName = document.getElementById('bi-name')!;
 const bossIntroTitle = document.getElementById('bi-title')!;
+const phaseCard = document.getElementById('phase-card')!;
+const phaseTitle = document.getElementById('phase-title')!;
+const phaseSub = document.getElementById('phase-sub')!;
 const chapterBanner = document.getElementById('chapter-banner')!;
 const bannerCode = document.getElementById('banner-code')!;
 const bannerTitle = document.getElementById('banner-title')!;
@@ -180,13 +222,17 @@ const btnPauseResume = document.getElementById('btn-pause-resume')!;
 const btnPauseSound = document.getElementById('btn-pause-sound') as HTMLButtonElement;
 const btnPauseRestart = document.getElementById('btn-pause-restart')!;
 const storySub = document.getElementById('story-sub')!;
-const chapterLoading = document.getElementById('chapter-loading')!;
-const chapterLoadingText = chapterLoading.querySelector('.cl-t')!;
+const devMode = new URLSearchParams(location.search).get('dev') === '1';
+const chapterNav = document.querySelector('.chapter-nav') as HTMLElement | null;
+if (chapterNav && !devMode) chapterNav.style.display = 'none';
 const lowHp = document.getElementById('low-hp')!;
 const hitFlash = document.getElementById('hit-flash')!;
 const comboHud = document.getElementById('combo-hud')!;
 const comboCountEl = document.getElementById('combo-count')!;
 const spiritCountEl = document.getElementById('spirit-count')!;
+const formHud = document.getElementById('form-hud')!;
+const formNameEl = document.getElementById('form-name')!;
+const formTimerEl = document.getElementById('form-timer')!;
 const rootsCountEl = document.getElementById('roots-count')!;
 const karmaFillEl = document.getElementById('karma-fill')!;
 const karmaLabelEl = document.getElementById('karma-label')!;
@@ -199,7 +245,24 @@ function showToast(msg: string): void {
   toastTimer = window.setTimeout(() => combatToast.classList.remove('show'), 1550);
 }
 
+function updateChapterLocks(): void {
+  document.querySelectorAll<HTMLButtonElement>('.chap-btn').forEach((btn, i) => {
+    const locked = i > unlockedChapter;
+    btn.classList.toggle('locked', locked);
+    btn.setAttribute('aria-disabled', String(locked));
+    btn.title = locked ? '先击败本回妖王解锁' : '';
+  });
+}
+
 async function startChapter(idx: number): Promise<void> {
+  if (idx > unlockedChapter) {
+    showToast('先击败本回妖王，才能进入下一回');
+    return;
+  }
+  const generation = ++chapterGeneration;
+  vfx.clear();
+  hero.clearTransientEffects();
+  endForm();
   currentChapter = THREE.MathUtils.clamp(idx, 0, ACTIVE_CHAPTERS.length - 1);
   const cfg = ACTIVE_CHAPTERS[currentChapter];
   chapterClearedTriggered = false;
@@ -207,6 +270,10 @@ async function startChapter(idx: number): Promise<void> {
   tutorialParryShown = false;
   chapterReady = false;
   chapterSpirits = 0;
+  phase3Announced = false;
+  phaseTimer = 0;
+  phaseBoss = null;
+  phaseCard.classList.add('hidden');
   chapterDamage = 0;
   chapterStartedAt = performance.now();
   chapterRank = 'B';
@@ -216,8 +283,6 @@ async function startChapter(idx: number): Promise<void> {
   document.body.classList.remove('eva-alert');
   resetCombo();
   modalOpen = false;
-  chapterLoadingText.textContent = `正在展开${cfg.title.split(' · ')[0]}`;
-  chapterLoading.classList.remove('hidden');
   modalOverlay.classList.add('hidden');
 
   // Reset Wukong vitals & position
@@ -239,18 +304,35 @@ async function startChapter(idx: number): Promise<void> {
   });
   hudChapCode.textContent = cfg.code;
   hudObjective.textContent = cfg.objectiveHint + (ngPlus > 0 ? ` · NG+${ngPlus}` : '');
+  audio.setAmbient(currentChapter);
+  if (currentChapter === 1) {
+    scene.fog = new THREE.FogExp2(0x2a0b07, 0.021);
+    hemiLight.color.setHex(0xff6a35); hemiLight.groundColor.setHex(0x120605); hemiLight.intensity = 0.62;
+    sunLight.color.setHex(0xff6a2c); sunLight.intensity = 1.25;
+    rimLight.color.setHex(0x45b6ff); rimLight.intensity = 1.5;
+    renderer.toneMappingExposure = 1.15;
+  } else if (currentChapter === 2) {
+    scene.fog = new THREE.FogExp2(0x101b32, 0.016);
+    hemiLight.color.setHex(0x8fb7d7); hemiLight.groundColor.setHex(0x111827); hemiLight.intensity = 0.7;
+    sunLight.color.setHex(0xffe0b0); sunLight.intensity = 1.25;
+    rimLight.color.setHex(0x8fdfff); rimLight.intensity = 1.1;
+    renderer.toneMappingExposure = 1.12;
+  } else {
+    scene.fog = new THREE.FogExp2(0x0a1718, 0.017);
+    hemiLight.color.setHex(0xa7d9c2); hemiLight.groundColor.setHex(0x0b1712); hemiLight.intensity = 0.85;
+    sunLight.color.setHex(0xffd29a); sunLight.intensity = 1.8;
+    rimLight.color.setHex(0x6fe3d6); rimLight.intensity = 1.2;
+    renderer.toneMappingExposure = 1.22;
+  }
 
-  // Show Chapter Calligraphic Scroll
-  bannerCode.textContent = cfg.code;
-  bannerTitle.textContent = cfg.title;
-  bannerPoem.textContent = cfg.introPoem;
-  chapterBanner.classList.remove('hidden');
-  chapterBanner.style.animation = 'none';
-  void chapterBanner.offsetWidth;
-  chapterBanner.style.animation = 'bannerFade 3.8s ease forwards';
+  chapterBanner.classList.add('hidden');
 
-  await world.loadChapter(cfg, gltfLoader);
-  await enemies.spawnChapterEnemies(cfg.enemies, gltfLoader, (x, z) => world.getTerrainHeight(x, z));
+  if (!(titleWorldAvailable && currentChapter === 0)) void world.loadChapter(cfg, gltfLoader);
+  titleWorldAvailable = false;
+  void enemies.spawnChapterEnemies(cfg.enemies, gltfLoader, (x, z) => world.getTerrainHeight(x, z));
+  void heroModelPromise;
+  void enemies.ready();
+  void renderer.compileAsync(scene, camera).catch(() => {});
   if (ngPlus > 0) {
     for (const e of enemies.enemies) {
       e.maxHp = Math.round(e.maxHp * (1 + ngPlus * 0.35));
@@ -258,19 +340,15 @@ async function startChapter(idx: number): Promise<void> {
     }
   }
   // Give the player one beat to land before clear can trigger.
-  window.setTimeout(() => { chapterReady = true; chapterLoading.classList.add('hidden'); }, 900);
+  chapterReady = true;
   const bossSpec = cfg.enemies.find((e) => e.isBoss);
   const bossName = bossSpec?.name ?? '';
-  cinematicBoss = enemies.getActiveBoss();
-  if (cinematicBoss) {
-    bossIntroName.textContent = bossName;
-    bossIntroTitle.textContent = bossSpec?.title ?? '花果山妖王';
-    chapterBanner.classList.add('hidden');
-    bossIntro.classList.remove('hidden');
-    cinematicTimer = 2.8;
-  }
-  window.setTimeout(() => { showStory(`${cfg.code} · ${cfg.title}　|　妖王：${bossName}`, 3800); speak('boss-intro'); }, 1300);
-  window.setTimeout(() => { audio.playBossRoar(); }, 1200);
+  bossIntro.classList.add('hidden');
+  cinematicBoss = null;
+  cinematicTimer = 0;
+
+  window.setTimeout(() => { if (generation !== chapterGeneration) return; showStory(`${cfg.code} · ${cfg.title}　|　妖王：${bossName}`, 3800); speak('boss-intro'); }, 1300);
+  window.setTimeout(() => { if (generation === chapterGeneration) audio.playBossRoar(); }, 1200);
 }
 
 // Combat Actions
@@ -278,13 +356,16 @@ function performLightAttack(): void {
   if (!gameStarted || modalOpen) return;
   // Auto soft-face nearest enemy within 7m for snappy action feel
   autoFaceNearestEnemy(7.5);
-  if (hero.startLightAttack()) {
-    audio.playLightSwing(hero.comboStep);
-    const now = performance.now();
-    if (now - lastComboVoice > 2400) {
-      lastComboVoice = now;
-      speak('combo');
-    }
+  if (!hero.startLightAttack()) {
+    lightBuffer = 0.2;
+    return;
+  }
+  lightBuffer = 0;
+  audio.playLightSwing(hero.comboStep);
+  const now = performance.now();
+  if (now - lastComboVoice > 2400) {
+    lastComboVoice = now;
+    speak('combo');
   }
 }
 
@@ -316,6 +397,111 @@ function performDodge(): void {
   }
 }
 
+function updateFormHud(): void {
+  const info = currentForm ? FORM_INFO[currentForm] : null;
+  formNameEl.textContent = info ? info.name : forms.length > 0 ? '待借形' : '未收';
+  formTimerEl.textContent = info ? `${Math.ceil(formTimer)}s` : forms.length > 0 ? `${forms.length}/3` : '';
+  formHud.classList.toggle('active', Boolean(currentForm));
+}
+
+function setFormFamiliar(kind: FormKind): void {
+  if (formFamiliar) { formFamiliar.removeFromParent(); disposeObject(formFamiliar); formFamiliar = null; }
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const rg = g.createRadialGradient(64, 64, 2, 64, 64, 62);
+  rg.addColorStop(0, 'rgba(255,255,255,0.95)');
+  rg.addColorStop(0.35, `rgba(${(FORM_INFO[kind].color >> 16) & 255},${(FORM_INFO[kind].color >> 8) & 255},${FORM_INFO[kind].color & 255},0.55)`);
+  rg.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = rg; g.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: FORM_INFO[kind].color, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+  sprite.scale.set(0.55, 0.9, 1);
+  sprite.position.set(1.25, 1.35, -0.35);
+  hero.root.add(sprite);
+  formFamiliar = sprite;
+}
+
+function learnForm(e: ActiveEnemy): void {
+  const isDragon = e.spec.modelCandidates.some((u) => u.includes('zhulong')) || e.spec.name.includes('龙');
+  const isWolf = e.spec.name.includes('狼') || e.spec.name.includes('狐');
+  const kind: FormKind = isDragon ? 'dragon' : isWolf ? 'wolf' : 'bull';
+  if (!forms.includes(kind)) {
+    forms.push(kind);
+    setFormFamiliar(kind);
+    showStory(`收形 · ${FORM_INFO[kind].name}　按 V 借形，E 施展`, 3800);
+  }
+  updateFormHud();
+}
+
+function endForm(): void {
+  if (currentForm) {
+    hero.bodyWrap.scale.setScalar(1);
+    if (formFamiliar) formFamiliar.visible = false;
+    if (formAura) formAura.visible = false;
+  }
+  currentForm = null;
+  formTimer = 0;
+  formHud.classList.remove('active');
+  updateFormHud();
+}
+
+function cycleForm(): void {
+  if (!gameStarted || modalOpen || paused) return;
+  if (forms.length === 0) { showToast('尚未收形 · 击败妖怪后按 V'); return; }
+  formIndex = (formIndex + 1) % forms.length;
+  currentForm = forms[formIndex];
+  formTimer = 10;
+  setFormFamiliar(currentForm);
+  const info = FORM_INFO[currentForm];
+  hero.bodyWrap.scale.setScalar(currentForm === 'bull' ? 1.12 : 1.03);
+  if (formFamiliar) formFamiliar.visible = true;
+  if (!formAura) {
+    formAura = new THREE.Mesh(
+      new THREE.TorusGeometry(1.05, 0.025, 8, 40),
+      new THREE.MeshBasicMaterial({ color: info.color, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    formAura.rotation.x = Math.PI / 2;
+    formAura.position.y = 0.12;
+    hero.root.add(formAura);
+  }
+  (formAura.material as THREE.MeshBasicMaterial).color.setHex(info.color);
+  formAura.visible = true;
+  formHud.classList.add('active');
+  audio.playPerfectDodge();
+  showToast(`借形 · ${info.name}　E 施展`);
+  updateFormHud();
+}
+
+function performFormAbility(): void {
+  if (!currentForm || formTimer <= 0) { performSpinAttack(); return; }
+  const info = FORM_INFO[currentForm];
+  const fwd = new THREE.Vector3(Math.sin(hero.yaw), 0, Math.cos(hero.yaw));
+  const targets = enemies.getAliveEnemies().filter((e) => e.root.position.distanceTo(hero.root.position) <= (currentForm === 'dragon' ? 11 : 5.2));
+  if (currentForm === 'bull') {
+    hero.root.position.addScaledVector(fwd, 4.2);
+    world.resolveCollision(hero.root.position, 0.5);
+    for (const e of targets) { enemies.applyDamage(e, 95); enemies.addPosture(e, 30); }
+    vfx.spawnShockwave(hero.root.position.clone(), 6.5, info.color);
+    vfx.shakeIntensity = Math.max(vfx.shakeIntensity, 0.38);
+  } else if (currentForm === 'dragon') {
+    for (const e of targets) {
+      const to = e.root.position.clone().sub(hero.root.position);
+      if (to.length() < 0.1 || to.normalize().dot(fwd) > 0.15) { enemies.applyDamage(e, 72); enemies.addPosture(e, 12); }
+    }
+    vfx.spawnShockwave(hero.root.position.clone().addScaledVector(fwd, 4), 9, info.color);
+  } else {
+    hero.root.position.addScaledVector(fwd, 6.2);
+    world.resolveCollision(hero.root.position, 0.5);
+    for (const e of targets) enemies.applyDamage(e, 62);
+    vfx.spawnShockwave(hero.root.position.clone(), 4, info.color);
+  }
+  hitStopTimer = Math.max(hitStopTimer, 0.1);
+  audio.playStaffHit(true);
+  audio.playVoice('combo');
+  endForm();
+}
+
 function performSpinAttack(): void {
   if (!gameStarted || modalOpen || paused) return;
   if (!hero.startSpinAttack()) return;
@@ -332,6 +518,8 @@ function performParry(): void {
     enemies.applyDamage(broken, dmg);
     vfx.triggerHitJuice(broken.root.position.clone().add(new THREE.Vector3(0, 1.3, 0)), dmg, true, `处决 ${dmg}!`);
     vfx.spawnShockwave(broken.root.position, 6.5, 0xffd166);
+    hitStopTimer = Math.max(hitStopTimer, 0.14);
+    vfx.shakeIntensity = Math.max(vfx.shakeIntensity, 0.28);
     audio.playStaffHit(true);
     audio.playPerfectDodge();
     showToast(`处决 · ${broken.spec.name}`);
@@ -477,7 +665,16 @@ document.getElementById('btn-start-game')!.addEventListener('click', async () =>
   damageBonus = 0;
   spiritsFound = 0;
   collectedSpirits.clear();
+  forms = [];
+  learnedForms.clear();
+  currentForm = null;
+  formIndex = -1;
+  formTimer = 0;
+  endForm();
+  updateFormHud();
   ngPlus = 0;
+  unlockedChapter = 0;
+  updateChapterLocks();
   bellCooldown = 0;
   bellPrompted = false;
   updateSpiritHud();
@@ -502,6 +699,7 @@ document.querySelectorAll('.spell-slot').forEach((slot) => {
 });
 
 btnPauseResume.addEventListener('click', () => togglePause(false));
+document.getElementById('btn-pause-quality')!.addEventListener('click', () => { applyQuality(!performanceMode); });
 btnPauseRestart.addEventListener('click', () => { togglePause(false); startChapter(currentChapter); });
 btnPauseSound.addEventListener('click', (ev) => { const m = audio.toggleMute(); (ev.currentTarget as HTMLButtonElement).textContent = m ? '声音：关' : '声音：开'; });
 document.getElementById('btn-mute')!.addEventListener('click', (ev) => {
@@ -530,7 +728,8 @@ window.addEventListener('keydown', (e) => {
   if (k === 'r') useImmortalGourd();
   if (e.key === 'Escape') { togglePause(); return; }
   if (k === 'f') performParry();
-  if (k === 'e') performSpinAttack();
+  if (k === 'e') performFormAbility();
+  if (k === 'v') cycleForm();
   if (k === 'g') tryRingBell();
   if (k === 'q') toggleLockOn();
   if (e.key === 'Tab') { e.preventDefault(); toggleLockOn(); }
@@ -569,7 +768,7 @@ window.addEventListener('resize', () => {
 let storyTimer = 0;
 const VOICE_TEXT: Record<string, string> = {
   start: '俺老孙来也。',
-  combo: '吃俺一棒！',
+  combo: '吃俺一棒',
   heavy: '碎！',
   dodge: '闪。',
   ding: '定！',
@@ -585,9 +784,9 @@ const VOICE_TEXT: Record<string, string> = {
 };
 
 function speak(name: string): void {
-  audio.playVoice(name);
+  const duration = audio.playVoice(name);
   const text = VOICE_TEXT[name];
-  if (text) showStory(text, 2200);
+  if (text) showStory(text, Math.max(2200, duration * 1000 + 150));
 }
 
 function showStory(text: string, ms = 4200): void {
@@ -614,7 +813,7 @@ function updateSpiritHud(): void {
 }
 
 function spawnSpiritOrbs(chapter: number): void {
-  for (const o of spiritOrbs) scene.remove(o.group);
+  for (const o of spiritOrbs) { scene.remove(o.group); disposeObject(o.group); }
   spiritOrbs = [];
   const positions: Record<number, Array<[number, number]>> = {
     0: [[-17, -2], [17, -6], [4, -27]],
@@ -651,6 +850,7 @@ function collectSpirit(orb: { group: THREE.Group; key: string; lore: string }): 
   spiritsFound += 1;
   chapterSpirits += 1;
   scene.remove(orb.group);
+  disposeObject(orb.group);
   spiritOrbs = spiritOrbs.filter((o) => o !== orb);
   updateSpiritHud();
   audio.playDingShenSpell();
@@ -743,6 +943,10 @@ function resolveRoot(kind: 'mercy' | 'devour', isFinal: boolean): void {
     karma = Math.min(100, karma + 25);
     showToast('吞噬 · 两根归位，增伤 +12%，业障 +25');
   }
+  if (!isFinal) {
+    unlockedChapter = Math.max(unlockedChapter, currentChapter + 1);
+    updateChapterLocks();
+  }
   updateRootHud();
   if (isFinal) {
     window.setTimeout(showEnding, 350);
@@ -759,7 +963,7 @@ function showEnding(): void {
       '你渡了自己',
       `六根归位，你却一根未留。金箍从头上落下，花果山的风第一次没有血腥味。\n（业障 ${karma}）`,
       '再入轮回 · NG+1',
-      () => { roots = 0; karma = 0; damageBonus = 0; ngPlus += 1; spiritsFound = 0; collectedSpirits.clear(); updateSpiritHud(); updateRootHud(); startChapter(0); showToast(`再入轮回 · NG+${ngPlus}`); }
+      () => { roots = 0; karma = 0; damageBonus = 0; ngPlus += 1; spiritsFound = 0; collectedSpirits.clear(); unlockedChapter = 0; updateChapterLocks(); updateSpiritHud(); updateRootHud(); startChapter(0); showToast(`再入轮回 · NG+${ngPlus}`); }
     );
   } else {
     speak('ending-bad');
@@ -768,7 +972,7 @@ function showEnding(): void {
       '你成了自己打的那只妖',
       `六根归位，全部收下。你坐在凌霄殿上，听见山下又有人喊“大圣”。\n（业障 ${karma}）`,
       '再入轮回 · NG+1',
-      () => { roots = 0; karma = 0; damageBonus = 0; ngPlus += 1; spiritsFound = 0; collectedSpirits.clear(); updateSpiritHud(); updateRootHud(); startChapter(0); showToast(`再入轮回 · NG+${ngPlus}`); }
+      () => { roots = 0; karma = 0; damageBonus = 0; ngPlus += 1; spiritsFound = 0; collectedSpirits.clear(); unlockedChapter = 0; updateChapterLocks(); updateSpiritHud(); updateRootHud(); startChapter(0); showToast(`再入轮回 · NG+${ngPlus}`); }
     );
   }
 }
@@ -820,26 +1024,38 @@ function respawnAtBoss(): void {
   showToast('归来 · 再战妖王');
 }
 
+function startPhaseCard(title: string, sub: string, boss: ActiveEnemy | null): void {
+  phaseBoss = boss;
+  phaseTimer = 1.2;
+  phaseTitle.textContent = title;
+  phaseSub.textContent = sub;
+  phaseCard.classList.remove('hidden');
+  audio.playBossRoar();
+  vfx.triggerPerfectDodgeSlowMo();
+}
+
+// Debug references are installed once, only behind the explicit developer URL.
+if (devMode) {
+  (window as unknown as { __W: unknown }).__W = {
+    enemies, hero, world, camera, renderer, scene, audio, startChapter,
+    state: () => ({ currentChapter, unlockedChapter, gameStarted, chapterReady, performanceMode }),
+    unlockAll: () => { unlockedChapter = 2; updateChapterLocks(); },
+  };
+}
+
 // Main 60fps Game Loop
 let lastTime = performance.now();
 
 function animate(now: number): void {
-  (window as unknown as { __W: unknown }).__W = { enemies, hero, world };
-requestAnimationFrame(animate);
-  const rawDt = Math.min(0.05, (now - lastTime) * 0.001);
-  lastTime = now;
 
-  fpsTime += rawDt; fpsFrames++;
-  if (fpsTime > 2.5) {
-    const fps = fpsFrames / fpsTime;
-    if (!lowQuality && fps < 42) {
-      lowQuality = true;
-      renderer.setPixelRatio(1);
-      renderer.shadowMap.enabled = false;
-      bloom.intensity = 0.35;
-    }
-    fpsTime = 0; fpsFrames = 0;
+requestAnimationFrame(animate);
+  let rawDt = Math.min(0.05, (now - lastTime) * 0.001);
+  lastTime = now;
+  if (hitStopTimer > 0) {
+    hitStopTimer = Math.max(0, hitStopTimer - rawDt);
+    rawDt *= 0.12;
   }
+
 
   if (!gameStarted) {
     // Cinematic slow camera orbit on Title Screen
@@ -870,6 +1086,14 @@ requestAnimationFrame(animate);
     return;
   }
   const dt = vfx.update(rawDt);
+  lightBuffer = Math.max(0, lightBuffer - dt);
+  if (lightBuffer > 0 && !modalOpen && gameStarted) {
+    autoFaceNearestEnemy(7.5);
+    if (hero.startLightAttack()) {
+      lightBuffer = 0;
+      audio.playLightSwing(hero.comboStep);
+    }
+  }
   bellCooldown = Math.max(0, bellCooldown - dt);
   if (currentChapter === 2 && !bellPrompted && !modalOpen && Math.hypot(hero.root.position.x + 8, hero.root.position.z - 4) < 5.5) {
     bellPrompted = true;
@@ -887,7 +1111,7 @@ requestAnimationFrame(animate);
     world.resolveCollision(hero.root.position, 0.45);
 
     // 2. Check Wukong Staff Hit Detection during active swing window
-    if (hero.attackTimer > 0.08 && hero.attackTimer < (hero.isFinisher ? 0.62 : 0.48) && !hero.hitDealtThisSwing) {
+    if (hero.attackTimer > 0.08 && hero.attackTimer < (hero.isHeavySlam ? 0.25 : hero.isFinisher ? 0.27 : 0.22) && !hero.hitDealtThisSwing) {
       const reach = hero.isHeavySlam ? 5.6 : hero.isFinisher ? 4.3 : 3.5;
       const fwd = new THREE.Vector3(Math.sin(hero.yaw), 0, Math.cos(hero.yaw));
       const strikeCenter = hero.root.position.clone().addScaledVector(fwd, hero.isHeavySlam ? 2.4 : 1.5);
@@ -909,16 +1133,21 @@ requestAnimationFrame(animate);
             e.root.position.clone().add(new THREE.Vector3(0, 1.4, 0)),
             baseDmg,
             hero.isHeavySlam,
-            hero.isHeavySlam ? `暴击 ${baseDmg}!` : `${baseDmg}`
+            hero.isHeavySlam ? `暴击 ${baseDmg}!` : `${baseDmg}`,
+            fwd
           );
           if (!hero.isHeavySlam) {
             hero.focusPoints = Math.min(300, hero.focusPoints + 36);
           }
+          if (e.spec.isBoss && e.phase3 && !phase3Announced) {
+            phase3Announced = true;
+            startPhaseCard('燃命', '妖王 · 濒死三阶段', e);
+          }
           if (enteredP2) {
             vfx.spawnShockwave(e.root.position, 12, 0xff3b1f);
             document.body.classList.add('eva-alert');
+            startPhaseCard('法天象地', '妖王 · 狂暴二阶段', e);
             audio.setBossPhase(true);
-            audio.playBossRoar();
             speak('phase');
             showToast(`${e.spec.name} · 法天象地狂暴二阶段！`);
           }
@@ -927,6 +1156,8 @@ requestAnimationFrame(animate);
       if (landed) {
         bumpCombo();
         hero.hitDealtThisSwing = true;
+        hitStopTimer = Math.max(hitStopTimer, hero.isHeavySlam ? 0.09 : 0.045);
+        vfx.shakeIntensity = Math.max(vfx.shakeIntensity, hero.isHeavySlam ? 0.24 : 0.1);
         audio.playStaffHit(hero.isHeavySlam);
       }
     }
@@ -938,6 +1169,7 @@ requestAnimationFrame(animate);
       c.atkCooldown -= dt;
       if (c.life <= 0) {
         scene.remove(c.root);
+        disposeObject(c.root);
         hero.clones.splice(i, 1);
         continue;
       }
@@ -1009,6 +1241,8 @@ requestAnimationFrame(animate);
           hero.focusPoints = Math.min(300, hero.focusPoints + 90);
           vfx.triggerPerfectDodgeSlowMo();
           vfx.spawnShockwave(hero.root.position, 4.5, 0x6fe3d6);
+          hitStopTimer = Math.max(hitStopTimer, 0.11);
+          vfx.shakeIntensity = Math.max(vfx.shakeIntensity, 0.2);
           audio.playPerfectDodge();
           showToast(broke ? '棍花弹反 · 破防！' : '棍花弹反 · 躯干受损！');
           return;
@@ -1042,12 +1276,29 @@ requestAnimationFrame(animate);
           );
         }
       },
-      (p) => world.resolveCollision(p, 0.5)
+      (p) => world.resolveCollision(p, 0.5),
+      (enemy, stage) => {
+        if (stage === 'tell') audio.playAttackCue(enemy.spec.name.includes('龙') ? 'dragon' : enemy.spec.isBoss ? 'boss' : 'minion');
+        else {
+          audio.playEnemyImpact(enemy.spec.isBoss);
+          if (enemy.spec.isBoss) vfx.spawnShockwave(enemy.root.position, enemy.pattern === 2 ? 7.4 : 3.4, 0xff8a43);
+        }
+      }
     );
-    audio.inCombat = anyAggro;
+    audio.setCombat(anyAggro);
     if (!tutorialParryShown && enemies.enemies.some((e) => !e.dead && e.windUpTimer > 0)) {
       tutorialParryShown = true;
       showStory('红光起 · 按 F 弹反；破防后再按 F 处决', 4200);
+    }
+    for (const e of enemies.enemies) {
+      if (e.dead && !learnedForms.has(e.spec.id)) { learnedForms.add(e.spec.id); learnForm(e); }
+    }
+    if (currentForm) {
+      formTimer -= dt;
+      if (formFamiliar) formFamiliar.rotation.y += dt * 1.8;
+      if (formAura) formAura.rotation.z += dt * 1.2;
+      if (formTimer <= 0) { endForm(); showToast('妖形散去'); }
+      updateFormHud();
     }
     const checkpointBoss = enemies.getActiveBoss();
     if (checkpointBoss && !bossCheckpoint && enemies.getAliveEnemies().every((e) => e.spec.isBoss)) {
@@ -1099,11 +1350,18 @@ requestAnimationFrame(animate);
   }
 
   // 7. Smooth 3rd-Person Action Follow Camera + Trauma Shake
-  const camDist = lockTarget ? (lockTarget.spec.isBoss ? 8.6 : 6.4) : (hero.onNimbus ? 9.2 : 7.1);
-  const camHeight = hero.onNimbus ? 4.2 : 3.0 + camPitch * 4.6;
+  const nearbyBoss = enemies.getActiveBoss();
+  const frameBoss = !lockTarget && nearbyBoss && nearbyBoss.root.position.distanceTo(hero.root.position) < 11 ? nearbyBoss : null;
+  if (frameBoss) {
+    const direction = Math.atan2(frameBoss.root.position.x - hero.root.position.x, frameBoss.root.position.z - hero.root.position.z);
+    camYaw = lerpAngle(camYaw, direction + Math.PI, Math.min(1, rawDt * 2.5));
+  }
+  const fireCam = currentChapter === 1 && !lockTarget;
+  const camDist = frameBoss ? 10 : lockTarget ? (lockTarget.spec.isBoss ? 8.6 : 6.4) : (hero.onNimbus ? 9.2 : fireCam ? 6.2 : 6.6);
+  const camHeight = hero.onNimbus ? 4.2 : fireCam ? 2.2 + camPitch * 3.2 : 2.6 + camPitch * 3.6;
   const desiredCamPos = new THREE.Vector3(
     hero.root.position.x + Math.sin(camYaw) * camDist,
-    hero.root.position.y + camHeight,
+    hero.root.position.y + camHeight + (frameBoss ? 1 : 0),
     hero.root.position.z + Math.cos(camYaw) * camDist
   );
   const camGround = world.getTerrainHeight(desiredCamPos.x, desiredCamPos.z) + 1.15;
@@ -1139,7 +1397,7 @@ requestAnimationFrame(animate);
   cd3.style.height = `${(hero.cdFan / 8.0) * 100}%`;
 
   const boss = enemies.getActiveBoss();
-  if (boss && boss.root.position.distanceTo(hero.root.position) < 30) {
+  if (boss && boss.root.position.distanceTo(hero.root.position) < 22) {
     bossHud.classList.remove('hidden');
     bossNameEl.textContent = boss.spec.name;
     bossTitleEl.textContent = boss.spec.title ?? '';
@@ -1161,6 +1419,8 @@ requestAnimationFrame(animate);
   }
   composer.render(rawDt);
 }
+
+applyQuality(performanceMode);
 
 // Preload Chapter 0 vista behind Title Gate so backdrop looks breathtaking immediately
 world.loadChapter(WUKONG_CHAPTERS[0], gltfLoader);

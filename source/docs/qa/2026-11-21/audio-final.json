@@ -1,0 +1,137 @@
+[
+  {
+    "asset": "voice-v2/ending-good.wav",
+    "LUFS": -18.0,
+    "peakDBFS": -7.0
+  },
+  {
+    "asset": "voice-v2/victory.wav",
+    "LUFS": -18.0,
+    "peakDBFS": -3.5
+  },
+  {
+    "asset": "voice-v2/dodge.wav",
+    "LUFS": -19.7,
+    "peakDBFS": -2.0
+  },
+  {
+    "asset": "voice-v2/boss-intro.wav",
+    "LUFS": -18.0,
+    "peakDBFS": -2.8
+  },
+  {
+    "asset": "voice-v2/ending-bad.wav",
+    "LUFS": -18.0,
+    "peakDBFS": -5.2
+  },
+  {
+    "asset": "voice-v2/combo.wav",
+    "LUFS": -18.7,
+    "peakDBFS": -2.0
+  },
+  {
+    "asset": "voice-v2/fan.wav",
+    "LUFS": -18.1,
+    "peakDBFS": -2.0
+  },
+  {
+    "asset": "voice-v2/phase.wav",
+    "LUFS": -18.0,
+    "peakDBFS": -3.2
+  },
+  {
+    "asset": "voice-v2/start.wav",
+    "LUFS": -18.0,
+    "peakDBFS": -4.3
+  },
+  {
+    "asset": "voice-v2/death.wav",
+    "LUFS": -18.0,
+    "peakDBFS": -5.0
+  },
+  {
+    "asset": "voice-v2/heavy.wav",
+    "LUFS": -17.1,
+    "peakDBFS": -4.6
+  },
+  {
+    "asset": "voice-v2/choice.wav",
+    "LUFS": -18.0,
+    "peakDBFS": -3.5
+  },
+  {
+    "asset": "voice-v2/ding.wav",
+    "LUFS": -18.0,
+    "peakDBFS": -5.2
+  },
+  {
+    "asset": "voice-v2/low-hp.wav",
+    "LUFS": -18.8,
+    "peakDBFS": -2.0
+  },
+  {
+    "asset": "bgm/battle.mp3",
+    "LUFS": -12.7,
+    "peakDBFS": -1.4
+  },
+  {
+    "asset": "bgm/battle-original.mp3",
+    "LUFS": -12.7,
+    "peakDBFS": -1.4
+  },
+  {
+    "asset": "ambient/heaven.mp3",
+    "LUFS": -24.0,
+    "peakDBFS": -9.7
+  },
+  {
+    "asset": "ambient/forest.mp3",
+    "LUFS": -23.4,
+    "peakDBFS": -9.4
+  },
+  {
+    "asset": "ambient/fire.mp3",
+    "LUFS": -37.9,
+    "peakDBFS": -9.5
+  },
+  {
+    "asset": "sfx/impact.wav",
+    "LUFS": -33.5,
+    "peakDBFS": -2.9
+  },
+  {
+    "asset": "sfx/slam.wav",
+    "LUFS": -19.2,
+    "peakDBFS": -3.0
+  },
+  {
+    "asset": "sfx/impact_heavy.wav",
+    "LUFS": -23.1,
+    "peakDBFS": -2.9
+  },
+  {
+    "asset": "sfx/parry.wav",
+    "LUFS": -28.7,
+    "peakDBFS": -2.7
+  },
+  {
+    "asset": "sfx/gong.wav",
+    "LUFS": -17.8,
+    "peakDBFS": -3.0
+  },
+  {
+    "asset": "sfx/taiko.wav",
+    "LUFS": -16.8,
+    "peakDBFS": -3.0
+  },
+  {
+    "asset": "sfx/whoosh_light.wav",
+    "LUFS": -70.0,
+    "peakDBFS": -2.9
+  },
+  {
+    "asset": "sfx/whoosh_heavy.wav",
+    "LUFS": -16.7,
+    "peakDBFS": -3.0
+  }
+]

@@ -1,7 +1,38 @@
-# Memory / lifecycle QA
+# 2026-11-21 生命周期与性能复测
 
-- Chapter switch disposes old terrain, props, landmark, sky, fire wall, particles and their materials/textures.
-- Enemy clear disposes cloned skins, geometries, materials and maps; mixer/actions are stopped.
-- Playwright/Chrome measurement across 4 chapter switches (JS heap, MB): 145 → 77 → 98 → 110.
-- renderer.info.memory after switches: geometries 68–110, textures 51–72; no unbounded growth observed in the 4-switch sample.
-- Remaining browser process/GPU memory is not fully captured by performance.memory; a long soak test is still recommended.
+状态：内部已测试，不等于跨设备或独立玩家验收。精确输入与结果：`qa/2026-11-21/verify-game.js`、`final-local.json`。
+
+环境：Chrome / ANGLE Metal / Apple M4 Pro，1920×1080，高画质；本地生产构建，静态镜头 90 帧。冻结敌人只用于同条件资源采样；测试先执行真实键盘攻击/闪避/分身/弹反输入。解锁状态测试注入伤害，不冒充正常通关。
+
+| 章节序列（四次切换） | GC 后 JS heap MiB | geometry | texture | 帧 p95 ms |
+|---|---:|---:|---:|---:|
+| 花果山 | 110.57 | 84 | 69 | 8.9 |
+| 火焰山 | 76.18 | 53 | 61 | 9.1 |
+| 南天门 | 69.48 | 67 | 53 | 9.2 |
+| 火焰山 | 76.41 | 53 | 61 | 9.1 |
+| 花果山 | 110.00 | 84 | 69 | 9.2 |
+
+同章节 geometry/texture 不增长；两次花果山堆内存没有增长。只有四次切关样本，不证明长时运行绝无泄漏。图片解码、浏览器/GPU 进程不全部计入 JS heap。
+
+- 本地点击事件后至位置变化：54ms（页面先驻留 4 秒）；另外样本 36–95ms。
+- 本轮四次切关观测到的最长 long task：103ms。
+- 冷加载早期样本：203/222/307ms；尚未达到“所有首次任务 <200ms”。解析和 shader 编译仍在主线程，不能靠无加载遮罩掩盖。
+- 静态样本约 121fps 是该设备/浏览器的 rAF 速率，不能当作所有设备的游戏帧率承诺。另一次近龙战斗 5 秒样本约120fps、max 11.1ms，样本仍短。
+- 主 JS 从 3757kB / gzip1228kB 降至约1067kB / gzip275kB：移除未使用 Spark 导入，没有重新启用 SPZ。
+- 性能模式：实际像素比1、阴影关；刷新持久化通过。
+
+## 生命周期修复
+
+- 所有可拥有的 Mesh/Points 几何、材质纹理、SkinnedMesh skeleton 释放；Sprite 的全局共享几何不单独销毁。
+- 章内静态道具共享一次解析和 GPU 资源；切章清空模板引用。没有跨章节无界 GLB 缓存。
+- 桃子/熄灭火墙隐藏但留在所属章中，切章统一回收。
+- 灵蕴、变形光晕、分身、残影、命中闪光/震波、龙息有完整结束回收。
+- 芭蕉扇和其余 GLB 回调检查 generation；过时结果释放。
+
+## 复现
+
+1. `npm run build`，`npx vite preview --host 127.0.0.1 --port 5180 --outDir dist`。
+2. 在 Playwright page 上执行 `qa/2026-11-21/verify-game.js` 的 async 函数；脚本包含 CDP 强制 GC。
+3. 用普通 URL 检查 `window.__W === undefined`、章节导航隐藏、无“正在展开”。`?dev=1` 才允许调试引用。
+4. 打开暂停菜单切换画质并刷新，检查 localStorage 和 renderer 状态。
+5. 对低端 Windows、移动设备和长时连续战斗仍需独立复测。
