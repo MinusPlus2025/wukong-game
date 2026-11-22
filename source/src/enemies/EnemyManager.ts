@@ -69,7 +69,8 @@ export class EnemyManager {
   public enemies: ActiveEnemy[] = [];
   private pending = new Set<Promise<void>>();
   private generation = 0;
-  private breathFx: Array<{ mesh: THREE.Mesh; life: number }> = [];
+  private breathMesh: THREE.Mesh<THREE.BufferGeometry,THREE.MeshBasicMaterial> | null = null;
+  private breathLife=0;
   private hpOverlay: HTMLDivElement;
 
   constructor(private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, private renderer: THREE.WebGLRenderer) {
@@ -92,8 +93,8 @@ export class EnemyManager {
       disposeObject(e.root, mats, geos, texs);
       e.hpBarWrap.remove();
     }
-    for (const fx of this.breathFx) { this.scene.remove(fx.mesh); fx.mesh.geometry.dispose(); (fx.mesh.material as THREE.Material).dispose(); }
-    this.breathFx = [];
+    if(this.breathMesh){this.breathMesh.removeFromParent();disposeObject(this.breathMesh);this.breathMesh=null}
+    this.breathLife=0;
     this.enemies = [];
     this.pending.clear();
   }
@@ -307,6 +308,7 @@ export class EnemyManager {
             ]);
             if (enemy.dead || gen !== this.generation) {return}
             enemy.dragonForm = new DragonFlight(enemy.root,skin,new Uint8Array(mask),neck);
+            this.prepareBreathMesh();
             enemy.dragonForm.warm(this.renderer,this.camera,this.scene);
             enemy.modelWrap.rotation.y = Math.PI/4;
           }
@@ -391,16 +393,15 @@ export class EnemyManager {
     if (!form) return this.muzzle.copy(e.root.position).add(new THREE.Vector3(0,1.5,0));
     form.align(e.attackYaw,this.muzzle);
     e.root.worldToLocal(e.telegraphRing.position.copy(this.muzzle));
-    e.telegraphRing.position.y = .08;
+    e.telegraphRing.position.y = .23;
     return this.muzzle;
   }
 
-  private spawnDragonBreath(e: ActiveEnemy): THREE.Vector3 {
-    const mouth = this.alignBreath(e);
-    performance.mark('wukong-dragon-breath',{detail:{yawErrorDegrees:e.dragonForm?.yawError(e.attackYaw), mouth:mouth.toArray()}});
+  private prepareBreathMesh(){
+    if(this.breathMesh)return this.breathMesh;
     const vertices: number[] = [];
     const halfAngle = Math.acos(breathCos);
-    const ground = e.root.position.y + .16 - mouth.y;
+    const ground = -1;
     for (let i=0;i<32;i++) {
       const a = halfAngle*(i/16-1), b = a + halfAngle/16;
       vertices.push(0,0,0,breathRange*Math.sin(a),ground,breathRange*Math.cos(a),breathRange*Math.sin(b),ground,breathRange*Math.cos(b));
@@ -409,10 +410,23 @@ export class EnemyManager {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices,3));
     const mat=makeBreathFlame();
     const cone = new THREE.Mesh(geo,mat);
-    cone.position.copy(mouth);
-    cone.rotation.y = e.attackYaw;
     this.scene.add(cone);
-    this.breathFx.push({ mesh: cone, life: 0.45 });
+    this.breathMesh=cone;
+    cone.visible=false;
+    void this.renderer.compileAsync(cone,this.camera,this.scene).catch(()=>{});
+    return cone;
+  }
+
+  private spawnDragonBreath(e: ActiveEnemy): THREE.Vector3 {
+    const mouth = this.alignBreath(e);
+    performance.mark('wukong-dragon-breath',{detail:{yawErrorDegrees:e.dragonForm?.yawError(e.attackYaw), mouth:mouth.toArray()}});
+    const cone=this.breathMesh ?? this.prepareBreathMesh();
+    cone.position.copy(mouth);
+    cone.rotation.y=e.attackYaw;
+    cone.scale.y=Math.max(.01,mouth.y-e.root.position.y-.21);
+    cone.material.userData.flameAge.value=0;
+    cone.visible=true;
+    this.breathLife=.45;
     return mouth;
   }
 
@@ -543,11 +557,10 @@ export class EnemyManager {
     resolveCollision?: (pos: THREE.Vector3) => void,
     onAttack?: (enemy: ActiveEnemy, stage: 'tell' | 'impact') => void
   ): boolean {
-    for (let i = this.breathFx.length - 1; i >= 0; i--) {
-      const fx = this.breathFx[i];
-      fx.life -= dt;
-      if (fx.life <= 0) { fx.mesh.removeFromParent(); disposeObject(fx.mesh); this.breathFx.splice(i, 1); }
-      else (fx.mesh.material as THREE.MeshBasicMaterial).userData.flameAge.value=.45-fx.life;
+    if(this.breathMesh && this.breathLife>0){
+      this.breathLife=Math.max(0,this.breathLife-dt);
+      this.breathMesh.material.userData.flameAge.value=.45-this.breathLife;
+      this.breathMesh.visible=this.breathLife>0;
     }
     let anyAggro = false;
 
