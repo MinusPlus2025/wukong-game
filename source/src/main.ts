@@ -224,7 +224,6 @@ const btnPauseRestart = document.getElementById('btn-pause-restart')!;
 const storySub = document.getElementById('story-sub')!;
 const devMode = new URLSearchParams(location.search).get('dev') === '1';
 const chapterNav = document.querySelector('.chapter-nav') as HTMLElement | null;
-if (!devMode) document.getElementById('btn-tech')!.remove();
 if (chapterNav && !devMode) chapterNav.style.display = 'none';
 const lowHp = document.getElementById('low-hp')!;
 const hitFlash = document.getElementById('hit-flash')!;
@@ -721,14 +720,6 @@ btnPauseSound.addEventListener('click', (ev) => { const m = audio.toggleMute(); 
 document.getElementById('btn-mute')!.addEventListener('click', (ev) => {
   const muted = audio.toggleMute();
   (ev.currentTarget as HTMLButtonElement).textContent = muted ? '声音：关' : '声音：开';
-});
-
-const techDrawer = document.getElementById('tech-drawer')!;
-document.getElementById('btn-tech')?.addEventListener('click', () => {
-  techDrawer.classList.toggle('hidden');
-});
-document.getElementById('btn-close-tech')!.addEventListener('click', () => {
-  techDrawer.classList.add('hidden');
 });
 
 window.addEventListener('keydown', (e) => {

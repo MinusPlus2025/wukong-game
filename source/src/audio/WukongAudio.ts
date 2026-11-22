@@ -400,7 +400,7 @@ export class WukongAudio {
     const chapter = ['forest', 'fire', 'heaven'][index];
     const player = (loop: boolean, volume: number) => new Tone.Player({ loop, volume, fadeIn: loop ? 0.12 : 0.005, fadeOut: 0.05 });
     const score = this.bgmPlayer = player(true, this.activeVoice ? -23 : -17).connect(this.master);
-    const phase = this.phaseLayer = player(true, this.phaseActive ? -17 : -70).connect(this.effectsBus);
+    const phase = this.phaseLayer = player(true, this.phaseActive ? (this.activeVoice ? -25 : -17) : -70).connect(this.master);
     const air = this.ambientPlayer = player(true, this.activeVoice ? -26 : -17).connect(this.master);
     const arrival = this.arrivalCue = player(false, -12).connect(this.effectsBus);
     const shift = this.shiftCue = player(false, -13).connect(this.effectsBus);
@@ -432,12 +432,14 @@ export class WukongAudio {
     window.clearTimeout(this.voiceDuckTimer);
     p.start(this.nextAudioTime('player:' + name));
     const duration = p.buffer.duration / p.playbackRate;
-    this.effectsBus.gain.rampTo(0.58, 0.035);
+    this.effectsBus.gain.rampTo(priority >= 3 ? 0.64 : 0.80, 0.035);
+    if (this.phaseActive) this.phaseLayer?.volume.rampTo(-25, 0.06);
     this.bgmPlayer?.volume.rampTo(-23, 0.06);
     this.ambientPlayer?.volume.rampTo(-26, 0.06);
     this.voiceDuckTimer = window.setTimeout(() => {
       this.activeVoice = null;
       this.effectsBus.gain.rampTo(1, 0.24);
+      if (this.phaseActive) this.phaseLayer?.volume.rampTo(-17, 0.35);
       this.bgmPlayer?.volume.rampTo(this.inCombat ? (this.phaseActive ? -17 : -16) : -22, 0.6);
       this.ambientPlayer?.volume.rampTo(-17, 0.6);
     }, duration * 1000 + 100);
@@ -464,7 +466,7 @@ export class WukongAudio {
     if (!this.isReady) return;
     Tone.getTransport().bpm.rampTo(on ? 118 : 104, 1.2);
     this.phaseActive = on;
-    this.phaseLayer?.volume.rampTo(on ? -17 : -70, 0.55);
+    this.phaseLayer?.volume.rampTo(on ? (this.activeVoice ? -25 : -17) : -70, 0.55);
     if (!this.activeVoice) this.bgmPlayer?.volume.rampTo(this.inCombat ? (on ? -17 : -16) : -22, 1);
   }
 

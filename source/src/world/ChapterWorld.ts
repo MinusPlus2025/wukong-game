@@ -846,6 +846,11 @@ export class ChapterWorld {
 
     const marble = new THREE.TextureLoader().load('textures/marble/diff.jpg');
     marble.colorSpace = THREE.SRGBColorSpace;marble.wrapS=marble.wrapT=THREE.RepeatWrapping;marble.repeat.set(2,3);
+    const marbleNormal = new THREE.TextureLoader().load('textures/marble/nor.jpg');
+    marbleNormal.wrapS = marbleNormal.wrapT = THREE.RepeatWrapping;
+    marbleNormal.repeat.copy(marble.repeat);
+    jadeMat.normalMap = marbleNormal;
+    jadeMat.normalScale.set(0.48, 0.48);
     jadeMat.map=marble;jadeMat.roughness=.49;jadeMat.metalness=.06;
     goldCapMat.emissiveIntensity=.035;goldCapMat.roughness=.46;
     // Carved bases, tapered shaft, neck mouldings and a stepped abacus.
