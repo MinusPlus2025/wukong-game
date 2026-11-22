@@ -99,7 +99,6 @@ function applyQuality(low: boolean): void {
   bloom.intensity = low ? 0.28 : 0.5;
   const btn = document.getElementById('btn-pause-quality');
   if (btn) btn.textContent = low ? '画质：性能' : '画质：高';
-  showToast(low ? '性能模式 · 阴影/像素比已降' : '高画质 · 阴影恢复');
 }
 
 // Subsystems
