@@ -1462,7 +1462,7 @@ requestAnimationFrame(animate);
     bossHud.classList.add('hidden');
   }
 
-  world.updateAmbient(dt, now * 0.001);
+  world.updateAmbient(dt, now * 0.001, boss?.dragonForm?.progress);
   const hpRatio = hero.hp / hero.maxHp;
   lowHp.style.opacity = hpRatio < 0.3 ? String(Math.min(1, (0.3 - hpRatio) * 2.6)) : '0';
   if (hpRatio < 0.3 && !lowHpPlayed) {

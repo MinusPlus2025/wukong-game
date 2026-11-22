@@ -74,6 +74,15 @@ export class DragonFlight {
     this.headMesh=part(skin,head);
     this.headMesh.position.copy(socket).multiplyScalar(-sculptScale);
     this.headMesh.scale.setScalar(sculptScale);
+    const [vertices,indices]=new Uint32Array(neck,0,2);
+    const edgeOffset=Math.ceil((8+32*vertices+2*indices)/4)*4;
+    const edge=new THREE.InterleavedBuffer(new Float32Array(neck,edgeOffset),8);
+    const collar=new THREE.BufferGeometry();
+    collar.setAttribute('position',new THREE.InterleavedBufferAttribute(edge,3,0));
+    collar.setAttribute('normal',new THREE.InterleavedBufferAttribute(edge,3,3));
+    collar.setAttribute('uv',new THREE.InterleavedBufferAttribute(edge,2,6));
+    const lip=new THREE.Mesh(collar,skin.material);lip.castShadow=lip.receiveShadow=true;
+    this.headMesh.add(lip);
     this.head.add(this.headMesh);
     this.cloud=part(skin,cloud);
     // Fill the previously occluded center with curls cut from the same cloud.
@@ -105,6 +114,20 @@ export class DragonFlight {
       if(d<0)this.coil.getPointAt(Math.max(0,1+d/this.coilLength),p);
       else this.lap.getPointAt(Math.min(1,d/this.lapLength),p);
       if(this.hovering>0){p.y+=.14*Math.sin(this.hovering*2.9-i*.12)*Math.min(1,this.hovering);p.x+=.17*Math.sin(this.hovering*2-i*.13)*i/segments*Math.min(1,this.hovering)}
+    }
+    // A lateral stroke travels aft as the waist loads, then releases at the tip.
+    // Keep the throat stable and preserve each link length to avoid rubbery stretch.
+    const amplitude=THREE.MathUtils.smoothstep(this.elapsed,.24,1.2);
+    const spacing=this.coilLength/segments;
+    for(let i=8;i<=segments;i++){
+      const u=i/segments,p=this.centers[i],prev=this.centers[i-1];
+      this.direction.subVectors(prev,p).normalize();
+      const phase=this.elapsed*4.5-u*8.7;
+      const stroke=amplitude*THREE.MathUtils.smoothstep(u,.15,.8)*(.36+.42*u)*Math.sin(phase);
+      const flick=amplitude*Math.pow(u,4)*.42*Math.sin(phase*1.55);
+      p.x+=this.direction.z*stroke;p.z-=this.direction.x*stroke;p.y+=flick;
+      this.direction.subVectors(p,prev).setLength(spacing);
+      p.copy(prev).add(this.direction);
     }
     this.head.position.copy(this.centers[0]);
     this.direction.subVectors(this.centers[0],this.centers[1]);

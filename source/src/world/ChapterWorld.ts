@@ -21,10 +21,11 @@ export class ChapterWorld {
   public peaches: PeachPickup[] = [];
   public colliders: Array<{ x: number; z: number; r: number; h: number }> = [];
   private landmarkMixer: THREE.AnimationMixer | null = null;
-  private dragonUniforms: Array<{ value: number }> = [];
-  private dragonAttackUniforms: Array<{ value: number }> = [];
-  private dragonModel: THREE.Object3D | null = null;
-  private dragonBaseY = 0;
+  private readonly courtTime={value:0};
+  private readonly courtLift={value:0};
+  private gateSeal:THREE.Group|null=null;
+  private gateMirror:THREE.MeshStandardMaterial|null=null;
+  private dialMaterial:THREE.MeshStandardMaterial|null=null;
   public fireWallActive = false;
   public fireWallZ = -6.5;
 
@@ -126,9 +127,8 @@ export class ChapterWorld {
     this.landmarkMixer?.stopAllAction();
     if (this.landmarkMixer) this.landmarkMixer.uncacheRoot(this.landmarkMixer.getRoot());
     this.landmarkMixer = null;
-    this.dragonUniforms = [];
-    this.dragonAttackUniforms = [];
-    this.dragonModel = null;
+    this.gateSeal=null;this.gateMirror=null;this.dialMaterial=null;
+    this.courtLift.value=0;
     this.fireWallGroup = new THREE.Group();
     this.fireWallParticles = null;
     this.fireWallGlow = null;
@@ -290,9 +290,11 @@ export class ChapterWorld {
       // Beyond the balustrade the stone terrace disappears into cloud banks.
       // Shade the existing relief, preserving collisions and the clear combat floor.
       terrainMat.onBeforeCompile=shader=>{
+        shader.uniforms.courtTime=this.courtTime;
+        shader.uniforms.courtLift=this.courtLift;
         shader.vertexShader='varying vec3 courtPos;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n courtPos=position;');
         shader.fragmentShader=`
-          varying vec3 courtPos;
+          uniform float courtTime;uniform float courtLift;varying vec3 courtPos;
           float courtHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
           float courtNoise(vec2 p){
             vec2 f=fract(p);f=f*f*(3.-2.*f);vec2 i=floor(p);
@@ -302,9 +304,13 @@ export class ChapterWorld {
         `+shader.fragmentShader.replace('#include <opaque_fragment>',`
           vec2 xz=courtPos.xz;
           float outside=max(abs(xz.x)/15.,abs(xz.y+6.)/25.);
-          float billow=courtCloud(xz*.18+vec2(courtNoise(xz*.1),0.));
+          vec2 drift=vec2(.15,.05)*courtTime;
+          vec2 wind=xz*.18+drift-normalize(xz+vec2(.001,6.))*courtLift*1.9;
+          float billow=courtCloud(wind+vec2(courtNoise(xz*.1),0.));
           float vapor=smoothstep(1.,1.48,outside+.23*(billow-.5));
           vec3 lightCloud=mix(vec3(.20,.28,.31),vec3(.77,.76,.66),smoothstep(.23,.74,billow));
+          float backlight=smoothstep(.30,.74,billow)*courtLift;
+          lightCloud+=vec3(.33,.18,.055)*backlight;
           outgoingLight=mix(outgoingLight,lightCloud,vapor);
           #include <opaque_fragment>
         `);
@@ -335,7 +341,12 @@ export class ChapterWorld {
 
     if (config.index !== 1) this.buildStonePaving(config.index === 2);
 
-    if (skyCourt) return;
+    if(skyCourt){
+      this.dialMaterial=arenaDisc.material;
+      this.dialMaterial.emissive.setHex(0xe6ad5d);
+      this.dialMaterial.emissiveMap=relief;this.dialMaterial.emissiveIntensity=.05;
+      return;
+    }
     const runeRing = new THREE.Mesh(
       new THREE.RingGeometry(10.6, 11.1, 64),
       new THREE.MeshBasicMaterial({
@@ -394,34 +405,6 @@ export class ChapterWorld {
     dome.position.set(0, 0, -8);
     this.skyDome = dome;
     this.worldGroup.add(dome);
-  }
-
-  private applyDragonShader(model: THREE.Object3D): void {
-    model.traverse((o) => {
-      if (!(o as THREE.Mesh).isMesh) return;
-      const mats = (Array.isArray((o as THREE.Mesh).material) ? (o as THREE.Mesh).material : [(o as THREE.Mesh).material]) as THREE.Material[];
-      for (const raw of mats) {
-        const mat = raw as THREE.MeshStandardMaterial;
-        if (!mat || !mat.isMeshStandardMaterial) continue;
-        const u = { value: 0 };
-        const atk = { value: 0 };
-        this.dragonUniforms.push(u);
-        this.dragonAttackUniforms.push(atk);
-        mat.onBeforeCompile = (shader) => {
-          shader.uniforms.uDragonTime = u;
-          shader.uniforms.uDragonAttack = atk;
-          shader.vertexShader = 'uniform float uDragonTime;\nuniform float uDragonAttack;\n' + shader.vertexShader.replace(
-            '#include <begin_vertex>',
-            `#include <begin_vertex>
-             float wave = sin(position.y * 1.7 - uDragonTime * 2.2) * 0.10;
-             transformed.x += wave;
-             transformed.z += cos(position.y * 1.3 + uDragonTime * 1.6) * 0.08;
-             transformed.z += uDragonAttack * smoothstep(0.0, 0.9, position.y) * 0.45;`
-          );
-        };
-        mat.needsUpdate = true;
-      }
-    });
   }
 
   private applyTextureQuality(root: THREE.Object3D): void {
@@ -616,10 +599,6 @@ export class ChapterWorld {
         if (gltf.animations && gltf.animations.length > 0) {
           this.landmarkMixer = new THREE.AnimationMixer(m);
           this.landmarkMixer.clipAction(gltf.animations[0]).play();
-        } else if (config.index === 2) {
-          this.applyDragonShader(m);
-          this.dragonModel = m;
-          this.dragonBaseY = m.position.y;
         }
         return;
       } catch {
@@ -913,6 +892,31 @@ export class ChapterWorld {
     axis.position.y=3.12;axis.rotation.z=.28;armillary.add(axis);
     armillary.traverse(o=>{o.castShadow=true;o.receiveShadow=true});this.worldGroup.add(armillary);
 
+// A pierced bronze sun hangs beneath the ridge. Its outer leaves turn with
+// lift-off while the lintel and columns remain stationary.
+const seal=new THREE.Group();
+seal.position.set(0,8.1,-24.9);
+const rim=new THREE.Mesh(new THREE.TorusGeometry(1.65,.095,10,80),bronze);
+seal.add(rim);
+const leaves=new THREE.InstancedMesh(new THREE.SphereGeometry(1,16,8),bronze,12);
+for(let i=0;i<12;i++){
+  const a=i*Math.PI/6;
+  stamp.position.set(Math.sin(a)*1.12,Math.cos(a)*1.12,0);
+  stamp.rotation.set(0,0,-a-.34);stamp.scale.set(.19,.62,.075);
+  stamp.updateMatrix();leaves.setMatrixAt(i,stamp.matrix);
+}
+seal.add(leaves);this.worldGroup.add(seal);this.gateSeal=seal;
+const core=new THREE.MeshStandardMaterial({color:0xba8752,metalness:.65,roughness:.36,emissive:0xffb75a,emissiveIntensity:.12});
+const mirror=new THREE.Mesh(new THREE.SphereGeometry(.52,32,16),core);
+mirror.scale.z=.29;seal.add(mirror);this.gateMirror=core;
+
+// A recessed, stepped stone-and-bronze edge around the engraved dais.
+const moulding=new THREE.LatheGeometry([[11.46,.12],[11.51,.155],[11.58,.155],[11.62,.11],[11.77,.095],[11.86,.045],[11.99,.025],[12.08,-.06]].map(([r,h])=>new THREE.Vector2(r,h)),112);
+const coping=new THREE.Mesh(moulding,jadeMat);
+coping.position.set(0,.025,-15);coping.receiveShadow=true;this.worldGroup.add(coping);
+const trim=new THREE.Mesh(new THREE.TorusGeometry(11.59,.026,8,112),bronze);
+trim.position.set(0,.18,-15);trim.rotation.x=Math.PI/2;this.worldGroup.add(trim);
+
     // Low cloud sea and floating lanterns: fill the celestial horizon without blocking the arena.
     const cc = document.createElement('canvas');
     cc.width = cc.height = 128;
@@ -970,10 +974,16 @@ export class ChapterWorld {
     }
   }
 
-  public updateAmbient(dt: number, time: number): void {
+  public updateAmbient(dt: number, time: number, flightProgress=0): void {
     this.fireTime.value = time;
     if (this.landmarkMixer) this.landmarkMixer.update(dt);
-    for (const u of this.dragonUniforms) u.value = time;
+    if(this.gateSeal && this.gateMirror && this.dialMaterial){
+      const wake=THREE.MathUtils.smoothstep(flightProgress,.015,.26)*(1-THREE.MathUtils.smoothstep(flightProgress,.57,.98));
+      this.courtTime.value=time;this.courtLift.value=wake;
+      this.gateSeal.rotation.z=THREE.MathUtils.smootherstep(flightProgress,.02,.78)*Math.PI/3;
+      this.gateMirror.emissiveIntensity=.12+2.3*wake;
+      this.dialMaterial.emissiveIntensity=.05+.84*wake;
+    }
     if (this.fireWallGlow) (this.fireWallGlow.material as THREE.MeshBasicMaterial).opacity = 0.72 + Math.sin(time * 7) * 0.12;
     if (this.fireWallPlane) {
       const fm = this.fireWallPlane.material as THREE.MeshBasicMaterial;
@@ -983,10 +993,6 @@ export class ChapterWorld {
     if (this.fireWallParticles) {
       this.fireWallParticles.rotation.y = Math.sin(time * 0.7) * 0.15;
       (this.fireWallParticles.material as THREE.PointsMaterial).opacity = 0.55 + Math.sin(time * 5) * 0.18;
-    }
-    if (this.dragonModel) {
-      this.dragonModel.position.y = this.dragonBaseY + Math.sin(time * 0.9) * 0.18;
-      this.dragonModel.rotation.y += dt * 0.06;
     }
     if (this.ambientMotes) {
       const a = this.ambientMotes.geometry.attributes.position as THREE.BufferAttribute;

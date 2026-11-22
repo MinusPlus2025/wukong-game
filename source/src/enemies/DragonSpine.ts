@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 export const bodySteps = 48;
-export const socket = new THREE.Vector3(.455,.315,-.14);
+export const socket = new THREE.Vector3(.455,.31,-.14);
 
 // The surface is a clipped strip of the sculpt itself. Reversing alternate strips
 // joins identical edge loops, including their UV seams, around the entire girth.
@@ -15,7 +15,7 @@ export function buildFlightSpine(patch:ArrayBuffer, length:number, material:THRE
   for(let i=0;i<copies;i++){
     const mirror=i%2===1;
     for(let v=0;v<nv;v++){
-      const k=i*nv+v,a=v*8,h=THREE.MathUtils.clamp((src[a+1]-.115)/(.326-.115),0,1);
+      const k=i*nv+v,a=v*8,h=THREE.MathUtils.clamp((src[a+1]-.115)/(.31-.115),0,1);
       const t=(i+(mirror?h:1-h))/copies;
       const girth=1.8*(1+.24*Math.sin(t*Math.PI))*Math.max(.008,1-Math.pow(t,2.6));
       pos[k*3]=(src[a]-THREE.MathUtils.lerp(.409,socket.x,h))*girth;

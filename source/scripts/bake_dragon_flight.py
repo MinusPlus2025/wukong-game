@@ -52,7 +52,7 @@ bits = bytearray(math.ceil(len(indices)/48))
 for i, triangle in enumerate(struct.iter_unpack('<III',indices)):
     membership = sorted(kinds[k] for k in triangle)[1]
     bits[i//4] |= membership << (2*(i%4))
-(model.parent/'dragon-flight.mask').write_bytes(bits)
+(model.parent/'dragon-flight-seam.mask').write_bytes(bits)
 # Clip an actual neck segment; preserve original UVs, normal field and PBR maps.
 # Adjacent mirrored instances meet on the identical boundary contour.
 read_normals = attrs['NORMAL']
@@ -61,7 +61,10 @@ with tempfile.TemporaryDirectory() as temp:
     normals=list(struct.iter_unpack('<bbbx',(Path(temp)/str(read_normals)).read_bytes()))
 points=[tuple(v/32767 for v in row) for row in struct.iter_unpack('<hhhxx',xyz)]
 coords=[tuple(v/65535 for v in row) for row in struct.iter_unpack('<HH',uvs)]
-low,high=.115,.326
+low,high=.115,.31
+fringe=[]
+head_edge=set()
+body_edge=set()
 cache, vertices, faces={},[],[]
 def clip(poly,height,sign):
     out=[]
@@ -71,20 +74,35 @@ def clip(poly,height,sign):
             t=va/(va-vb);out.append(tuple(x+(y-x)*t for x,y in zip(a,b)))
         if vb>=0:out.append(b)
     return out
-for tri in struct.iter_unpack('<III',indices):
+for it,tri in enumerate(struct.iter_unpack('<III',indices)):
     pp=[points[k] for k in tri]
     if max(v[1] for v in pp)<low or min(v[1] for v in pp)>high or max(v[0] for v in pp)<.16:continue
     # Isolated neck island throughout this vertical band.
     if sum(v[0]-v[2] for v in pp)/3<.17:continue
     poly=[(*points[k],*(v/127 for v in normals[k]),*coords[k]) for k in tri]
+    if min(v[1] for v in pp)<high<max(v[1] for v in pp):
+        # Both sides are clipped from one triangle with the same interpolation.
+        bits[it//4] &= ~(3 << (2*(it%4)))
+        tip=clip(poly,high,1)
+        for v in tip:
+            if abs(v[1]-high)<1e-7:head_edge.add(struct.pack('<8f',*v))
+        for k in range(2,len(tip)):fringe.extend([tip[0],tip[k-1],tip[k]])
     poly=clip(poly,low,1)
     if poly:poly=clip(poly,high,-1)
     ids=[]
     for v in poly:
         key=struct.pack('<8f',*v)
+        if abs(v[1]-high)<1e-7:body_edge.add(key)
         if key not in cache:cache[key]=len(vertices);vertices.append(key)
         ids.append(cache[key])
     for k in range(2,len(ids)):faces.extend([ids[0],ids[k-1],ids[k]])
 assert len(vertices)<65536
-(model.parent/'dragon-flight-neck.bin').write_bytes(struct.pack('<II',len(vertices),len(faces))+b''.join(vertices)+struct.pack('<'+'H'*len(faces),*faces))
+(model.parent/'dragon-flight-seam.bin').write_bytes(struct.pack('<II',len(vertices),len(faces))+b''.join(vertices)+struct.pack('<'+'H'*len(faces),*faces))
 print('Neck patch:',len(vertices),'vertices,',len(faces)//3,'triangles')
+
+assert head_edge and head_edge==body_edge, 'Mismatched positions, UVs or normals along neck seam'
+print('Matched boundary samples:',len(head_edge))
+(model.parent/'dragon-flight-seam.mask').write_bytes(bits)
+with (model.parent/'dragon-flight-seam.bin').open('ab') as out:
+    out.write(bytes((-out.tell())%4))
+    for v in fringe:out.write(struct.pack('<8f',*v))
