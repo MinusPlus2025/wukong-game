@@ -598,18 +598,33 @@ function useImmortalGourd(): void {
   vfx.spawnFloatingText(hero.root.position, '+135 仙酿回血', true);
 }
 
+const lockProjection = new THREE.Vector3();
+
+function lockPoint(enemy: ActiveEnemy, out: THREE.Vector3): THREE.Vector3 {
+  if(enemy.phase2 && enemy.dragonForm && enemy.dragonForm.progress>0)
+    return enemy.dragonForm.targetPoint(out);
+  out.copy(enemy.root.position);
+  out.y+=enemy.spec.scale*.8;
+  return out;
+}
+
 function pickLockTarget(): ActiveEnemy | null {
   let best: ActiveEnemy | null = null;
-  let bestDist = 26;
-  for (const e of enemies.getAliveEnemies()) {
-    const d = e.root.position.distanceTo(hero.root.position);
-    if (d < bestDist) { bestDist = d; best = e; }
+  let bestScore=Infinity;
+  camera.updateMatrixWorld();
+  for(const enemy of enemies.getAliveEnemies()){
+    const distance=enemy.root.position.distanceTo(hero.root.position);
+    if(distance>=26)continue;
+    const p=lockPoint(enemy,lockProjection).project(camera);
+    if(p.z < -1 || p.z > 1 || Math.abs(p.x)>1 || Math.abs(p.y)>1)continue;
+    const score=distance/26+.65*Math.hypot(p.x,p.y);
+    if(score<bestScore){bestScore=score;best=enemy}
   }
   return best;
 }
 
 function toggleLockOn(): void {
-  if (!gameStarted || modalOpen) return;
+  if (!gameStarted || modalOpen || paused) return;
   if (lockTarget && !lockTarget.dead) {
     lockTarget = null;
     lockSprite.visible = false;
@@ -626,11 +641,7 @@ function updateLockOn(): void {
   }
   if (!lockTarget) { lockSprite.visible = false; return; }
   lockSprite.visible = true;
-  lockSprite.position.set(
-    lockTarget.root.position.x,
-    lockTarget.root.position.y + (lockTarget.spec.isBoss ? 3.6 : 2.6),
-    lockTarget.root.position.z
-  );
+  lockPoint(lockTarget,lockSprite.position);
   const scale = lockTarget.spec.isBoss ? 1.6 : 1.0;
   lockSprite.scale.set(scale, scale, 1);
 }
@@ -736,8 +747,10 @@ window.addEventListener('keydown', (e) => {
   if (k === 'e') performFormAbility();
   if (k === 'v') cycleForm();
   if (k === 'g') tryRingBell();
-  if (k === 'q') toggleLockOn();
-  if (e.key === 'Tab') { e.preventDefault(); toggleLockOn(); }
+  if ((k === 'q' || e.key === 'Tab') && gameStarted && !paused && !modalOpen) {
+    e.preventDefault();
+    if (!e.repeat) toggleLockOn();
+  }
   if (k === 'm') { const m = audio.toggleMute(); (document.getElementById('btn-mute') as HTMLButtonElement).textContent = m ? '声音：关' : '声音：开'; }
 });
 

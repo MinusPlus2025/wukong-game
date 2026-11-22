@@ -186,6 +186,7 @@ export class DragonFlight {
     this.head.quaternion.multiply(this.pitchRotation.setFromAxisAngle(this.pitchAxis,this.pitch));
     this.poseSpine();
   }
+  targetPoint(out:THREE.Vector3){return this.head.getWorldPosition(out)}
   origin(out:THREE.Vector3){return this.headMesh.localToWorld(out.fromBufferAttribute(this.skin.geometry.getAttribute('position'),mouthVertex))}
   fall(dt:number){this.head.rotation.x+=dt*.4;this.group.position.y-=dt*1.7;}
   yawError(yaw:number){
