@@ -7,15 +7,15 @@
 
 ## 运行
 
-本目录是源代码；大模型与 3DGS 资产不重复放两份，使用仓库根目录的 `models/`、`models/live-opt/`、`worlds/`：
+从完整仓库进入 `source/`。模型和贴图通过仓库内的相对符号链接复用根目录资产，音频位于 `public/audio/`。在保留符号链接的检出环境中运行：
 
 ```bash
-npm install
-mkdir -p public
-ln -s ../../models public/models
-ln -s ../../textures public/textures
+npm ci
+npm run build
 npm run dev -- --port 5181
 ```
+
+`dist/` 为可部署的静态游戏。若检出工具将符号链接转成文本文件，请在支持符号链接的环境中重新检出仓库。
 
 打开 http://localhost:5181/ 。
 
@@ -51,6 +51,8 @@ npm run dev -- --port 5181
 
 - `src/main.ts` 主循环 / 战斗判定 / 锁敌 / 六根 / 暂停 / HUD
 - `src/player/WukongController.ts` 悟空控制器、武器 socket、技能
+- `src/enemies/DragonFlight.ts` 与 `DragonSpine.ts` 负责烛龙离座、脊背传力与回首瞄准。
+- `src/enemies/BreathVfx.ts` 定义龙息扫线、火流和命中／完美闪身共用的扇区检测。
 - `src/enemies/EnemyManager.ts` 敌人/Boss AI、受击硬直、阶段
 - `src/world/ChapterWorld.ts` 三回世界、3DGS、Aholo 道具加载、场景细节
 - `src/audio/WukongAudio.ts` Tone.js 配乐/音效/配音、BGM ducking
