@@ -615,15 +615,20 @@ export class ChapterWorld {
     const water = new THREE.InstancedMesh(
       new THREE.CylinderGeometry(0.018, 0.045, 1, 5),
       new THREE.MeshBasicMaterial({ color: 0x9bd8dc, transparent: true, opacity: 0.24, depthWrite: false }),
-      48
+      72
     );
+    const darkWater = new THREE.Color(0x70afb6);
+    const brightWater = new THREE.Color(0xe4fcff);
+    const tint = new THREE.Color();
     const strand = new THREE.Object3D();
-    for (let i = 0; i < 48; i++) {
-      const x = (i / 47 - 0.5) * 7.5;
+    for (let i = 0; i < 72; i++) {
+      const x = (i / 71 - 0.5) * 7.5 + Math.sin(i * 2.4) * 0.12;
       const height = 7 + Math.sin(i * 2.3) * 1.5;
       strand.position.set(x, height / 2 + 0.4, -29 + Math.sin(i * 1.7) * 0.45);
-      strand.scale.set(1, height, 1); strand.updateMatrix();
+      const width = 0.45 + 0.7 * Math.abs(Math.sin(i * 1.9));
+      strand.scale.set(width, height, width); strand.updateMatrix();
       water.setMatrixAt(i, strand.matrix);
+      water.setColorAt(i, tint.copy(darkWater).lerp(brightWater, Math.abs(Math.sin(i * 2.7))));
     }
     water.instanceMatrix.needsUpdate = true;
     this.waterfallMesh = water;
@@ -737,9 +742,9 @@ export class ChapterWorld {
       let x=(seam%2===0?-1:1)*(3+seam%6*2), z=13-(seam%5)*4;
       for(let j=0;j<15;j++){
         x+=Math.sin(seam*8.3+j*5.1)*.67;z-=.84;
-        const w=(.04+.095*Math.abs(Math.sin(j*.79+seam)))*Math.sin(Math.PI*(j+.15)/15);
+        const w=(.025+.12*Math.pow(Math.abs(Math.sin(j*.79+seam)), 1.6))*Math.sin(Math.PI*(j+.15)/15);
         const id=vertices.length/3;
-        for(const [dx,dy,r,g,b] of [[-2*w,.016,.055,.032,.025],[-w,.06,.17,.09,.046],[-.28*w,.029,1,.22,.018],[.22*w,.028,1,.39,.036],[w,.052,.18,.08,.036],[2*w,.015,.055,.032,.025]]){
+        for(const [dx,dy,r,g,b] of [[-2*w,.016,.055,.032,.025],[-w,.06,.17,.09,.046],[-.28*w,.029,.65+.35*Math.abs(Math.sin(j+seam)),.16,.01],[.22*w,.028,1,.28+.19*Math.abs(Math.sin(j*1.7)),.025],[w,.052,.18,.08,.036],[2*w,.015,.055,.032,.025]]){
           vertices.push(x+dx,this.getTerrainHeight(x+dx,z)+dy,z);colors.push(r,g,b);
         }
         if(j>0)for(let k=0;k<5;k++)faces.push(id-6+k,id-5+k,id+k,id-5+k,id+1+k,id+k);
@@ -851,7 +856,11 @@ export class ChapterWorld {
     marbleNormal.repeat.copy(marble.repeat);
     jadeMat.normalMap = marbleNormal;
     jadeMat.normalScale.set(0.48, 0.48);
-    jadeMat.map=marble;jadeMat.roughness=.49;jadeMat.metalness=.06;
+    const marbleRoughness = new THREE.TextureLoader().load('textures/marble/rough.jpg');
+    marbleRoughness.wrapS = marbleRoughness.wrapT = THREE.RepeatWrapping;
+    marbleRoughness.repeat.copy(marble.repeat);
+    jadeMat.roughnessMap = marbleRoughness;
+    jadeMat.map=marble;jadeMat.roughness=.84;jadeMat.metalness=.06;
     goldCapMat.emissiveIntensity=.035;goldCapMat.roughness=.46;
     // Carved bases, tapered shaft, neck mouldings and a stepped abacus.
     const profile=[[1.08,0],[1.08,.15],[.98,.18],[.96,.28],[.83,.34],[.78,.49],[.83,.53],[.83,.63],[.72,.7],[.66,7.9],[.70,8.0],[.77,8.05],[.77,8.16],[.70,8.23],[.84,8.38],[.99,8.48],[.99,8.64],[1.1,8.70],[1.1,8.85]];

@@ -14,6 +14,7 @@ export class WukongAudio {
 
   private master!: Tone.Gain;
   private effectsBus!: Tone.Gain;
+  private contactBus!: Tone.Gain;
   private dialoguePriority = 0;
   private warmthFilter!: Tone.Filter;
   private hallReverb!: Tone.Reverb;
@@ -64,6 +65,7 @@ export class WukongAudio {
 
     this.master = new Tone.Gain(0.58);
     this.effectsBus = new Tone.Gain(1).connect(this.master);
+    this.contactBus = new Tone.Gain(1).connect(this.master);
     this.master.connect(new Tone.Limiter(-1).toDestination());
     // Recording and speakers share the same peak protection.
     const recordLimiter = new Tone.Limiter(-1);
@@ -200,7 +202,7 @@ export class WukongAudio {
     }
     for (const [k, url] of Object.entries(sfxMap)) {
       const contact = ['hide', 'bone', 'gel', 'bronze', 'horn', 'scale'].includes(k);
-      this.sfxPlayers[k] = new Tone.Player({ url, volume: -5 }).connect(contact ? this.master : this.effectsBus);
+      this.sfxPlayers[k] = new Tone.Player({ url, volume: -5 }).connect(contact ? this.contactBus : this.effectsBus);
     }
 
     this.isReady = true;
@@ -433,12 +435,14 @@ export class WukongAudio {
     p.start(this.nextAudioTime('player:' + name));
     const duration = p.buffer.duration / p.playbackRate;
     this.effectsBus.gain.rampTo(priority >= 3 ? 0.64 : 0.80, 0.035);
+    this.contactBus.gain.rampTo(priority >= 3 ? 0.75 : 0.90, 0.025);
     if (this.phaseActive) this.phaseLayer?.volume.rampTo(-25, 0.06);
     this.bgmPlayer?.volume.rampTo(-23, 0.06);
     this.ambientPlayer?.volume.rampTo(-26, 0.06);
     this.voiceDuckTimer = window.setTimeout(() => {
       this.activeVoice = null;
       this.effectsBus.gain.rampTo(1, 0.24);
+      this.contactBus.gain.rampTo(1, 0.18);
       if (this.phaseActive) this.phaseLayer?.volume.rampTo(-17, 0.35);
       this.bgmPlayer?.volume.rampTo(this.inCombat ? (this.phaseActive ? -17 : -16) : -22, 0.6);
       this.ambientPlayer?.volume.rampTo(-17, 0.6);
