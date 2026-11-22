@@ -175,24 +175,12 @@ export class WukongAudio {
       volume: -12,
     }).connect(this.hallReverb);
 
-    const voiceMap: Record<string, string> = {
-      start: 'audio/staff-performance/start.wav',
-      combo: 'audio/battle-voices/combo.wav',
-      heavy: 'audio/staff-performance/heavy.wav',
-      dodge: 'audio/battle-voices/dodge.wav',
-      ding: 'audio/battle-voices/ding.wav',
-      fan: 'audio/battle-voices/fan.wav',
-      phase: 'audio/battle-voices/phase.wav',
-      victory: 'audio/battle-voices/victory.wav',
-      death: 'audio/battle-voices/death.wav',
-      choice: 'audio/battle-voices/choice.wav',
-      'ending-good': 'audio/battle-voices/ending-good.wav',
-      'ending-bad': 'audio/battle-voices/ending-bad.wav',
-      'boss-intro': 'audio/staff-performance/boss-intro.wav',
-      'low-hp': 'audio/battle-voices/low-hp.wav',
-    };
-    for (const [k, url] of Object.entries(voiceMap)) {
-      this.voices[k] = new Tone.Player({ url, volume: 0 }).connect(this.master);
+    const voiceKeys = [
+      'start', 'combo', 'heavy', 'dodge', 'ding', 'fan', 'phase', 'victory',
+      'death', 'choice', 'ending-good', 'ending-bad', 'boss-intro', 'low-hp',
+    ];
+    for (const key of voiceKeys) {
+      this.voices[key] = new Tone.Player({ url: `audio/monkey-voice/${key}.wav`, volume: 0 }).connect(this.master);
     }
     const sfxMap: Record<string, string> = {
       whoosh_light: 'audio/sfx/whoosh_light.wav',

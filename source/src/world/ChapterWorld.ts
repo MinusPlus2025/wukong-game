@@ -1,6 +1,7 @@
 import { addAtlasRelief } from '../utils/artSurface';
 import { disposeObject } from '../utils/disposeObject';
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { ChapterConfig } from '../data/ChaptersData';
 
@@ -395,8 +396,8 @@ export class ChapterWorld {
   }
 
   private buildSkyDome(config: ChapterConfig): void {
-    const sky = ['forest','fire','heaven'][config.index];
-    const tex = new THREE.TextureLoader().load('textures/art/' + sky + '-sky.jpg');
+    const sky = ['forest-sky','fire-sky','court-cloud-deck'][config.index];
+    const tex = new THREE.TextureLoader().load('textures/art/' + sky + '.jpg');
     tex.colorSpace = THREE.SRGBColorSpace;
     const dome = new THREE.Mesh(
       new THREE.SphereGeometry(120, 32, 16),
@@ -866,7 +867,7 @@ export class ChapterWorld {
     const railPosts=new THREE.InstancedMesh(new THREE.LatheGeometry([
       [.32,0],[.33,.14],[.24,.22],[.21,.78],[.29,.83],[.29,.93],[.20,1.00],[.12,1.12],[0,1.16]
     ].map(([r,h])=>new THREE.Vector2(r,h)),16),jadeMat,26);
-    const rails=new THREE.InstancedMesh(new THREE.BoxGeometry(.16,.15,2.5),jadeMat,48);
+    const rails=new THREE.InstancedMesh(new RoundedBoxGeometry(.16,.15,2.5,1,.028),jadeMat,48);
     const stamp=new THREE.Object3D();let post=0,rail=0;
     for(const side of [-1,1])for(let i=0;i<13;i++){
       const x=side*11.9,z=12.5-i*2.5,y=this.getTerrainHeight(x,z);
