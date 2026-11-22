@@ -18,3 +18,5 @@ No new third-party assets. Existing Aholo and CC0 assets retained. Water strands
 南天门优先载入项目已有 Aholo 烛龙。新增浅法线派生自项目原贴图，三回天空由离线脚本生成。
 
 凌霄天龙飞行形态沿用项目 Aholo 烛龙的龙首、云座和原贴图。飞行体节从同一 GLB 的颈段截取，保留原顶点法线、UV、颜色及金属度/粗糙度贴图。scripts/bake_dragon_flight.py 从原 GLB 重建面片掩码和颈段。南天门星盘使用既有大理石底图，铜嵌纹、浑仪与石栏由项目原创生成；烘焙脚本为 scripts/bake_celestial_dial.py。
+
+南天门悬镜、石台线脚及云流着色由项目生成。dragon-flight-seam.mask 与 dragon-flight-seam.bin 由原烛龙模型派生，包含颈段和与其配对的头侧截面边缘。
