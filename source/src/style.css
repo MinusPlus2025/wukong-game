@@ -650,6 +650,8 @@ body {
 
 .minion-name {
   display: block;
+  white-space: nowrap;
+  line-height: 14px;
   font-size: 11px;
   color: #f3e6ce;
   text-shadow: 0 1px 5px #000;

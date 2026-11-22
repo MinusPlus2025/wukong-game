@@ -146,6 +146,7 @@ export class EnemyManager {
 
       // Floating HP bar for non-boss minions (Boss uses top-screen Grand Boss Bar)
       const hpBarWrap = document.createElement('div');
+      hpBarWrap.style.display = 'none';
       hpBarWrap.className = `minion-hp ${spec.isBoss ? 'is-boss-hidden' : ''}`;
       hpBarWrap.innerHTML = `<span class="minion-name">${spec.name}</span><div class="minion-track"><div class="minion-fill"></div></div>`;
       const hpBarFill = hpBarWrap.querySelector('.minion-fill') as HTMLDivElement;
@@ -632,7 +633,6 @@ export class EnemyManager {
         e.frozenTimer -= dt;
         e.sealRing.rotation.z += dt * 2.8;
         (e.sealRing.material as THREE.MeshBasicMaterial).opacity = Math.min(0.95, e.frozenTimer);
-        this.updateFloatingBar(e);
         continue;
       } else {
         (e.sealRing.material as THREE.MeshBasicMaterial).opacity = 0;
@@ -649,7 +649,6 @@ export class EnemyManager {
       if (e.staggerTimer > 0) {
         e.staggerTimer -= dt;
         e.modelWrap.position.x = Math.sin(performance.now() * 0.09) * 0.045;
-        this.updateFloatingBar(e);
         continue;
       } else {
         e.modelWrap.position.x = 0;
@@ -657,7 +656,6 @@ export class EnemyManager {
 
       if (e.recoveryTimer > 0) {
         e.recoveryTimer = Math.max(0, e.recoveryTimer - dt);
-        this.updateFloatingBar(e);
         continue;
       }
       const toPlayer = new THREE.Vector3(
@@ -839,25 +837,43 @@ export class EnemyManager {
       e.root.position.z = THREE.MathUtils.clamp(e.root.position.z, -32, 28);
       e.root.position.y = terrainHeightFn(e.root.position.x, e.root.position.z);
 
-      this.updateFloatingBar(e);
     }
 
     return anyAggro;
   }
 
-  private updateFloatingBar(e: ActiveEnemy): void {
-    if (e.spec.isBoss) return;
-    const headPos = e.root.position.clone().add(new THREE.Vector3(0, e.spec.scale * 1.15 + 0.5, 0));
-    const proj = headPos.project(this.camera);
-    if (proj.z > 1) {
-      e.hpBarWrap.style.display = 'none';
-      return;
+  private readonly projectedHead = new THREE.Vector3();
+  private readonly visibleBars: {enemy:ActiveEnemy;x:number;y:number;priority:number;distance:number}[]=[];
+  private readonly occupiedBars: {x:number;y:number}[]=[];
+
+  public updateFloatingBars(target:ActiveEnemy|null):void {
+    const candidates=this.visibleBars, occupied=this.occupiedBars;
+    candidates.length=0;occupied.length=0;
+    this.camera.updateMatrixWorld();
+    const width=window.innerWidth,height=window.innerHeight;
+    for(const enemy of this.enemies){
+      if(enemy.dead || enemy.spec.isBoss)continue;
+      const point=this.projectedHead.copy(enemy.root.position);
+      point.y+=enemy.spec.scale*1.15+.5;
+      const distance=point.distanceToSquared(this.camera.position);
+      point.project(this.camera);
+      const x=(point.x*.5+.5)*width,y=(.5-point.y*.5)*height;
+      if(point.z < -1 || point.z > 1 || x<48 || x>width-48 || y<26 || y>height){
+        enemy.hpBarWrap.style.display='none';
+        continue;
+      }
+      const priority=enemy===target?0:enemy.windUpTimer>0?1:2;
+      candidates.push({enemy,x,y,priority,distance});
     }
-    e.hpBarWrap.style.display = 'block';
-    const x = (proj.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-proj.y * 0.5 + 0.5) * window.innerHeight;
-    e.hpBarWrap.style.left = `${x}px`;
-    e.hpBarWrap.style.top = `${y}px`;
-    e.hpBarFill.style.width = `${Math.max(0, (e.hp / e.maxHp) * 100)}%`;
+    candidates.sort((a,b)=>a.priority-b.priority || a.distance-b.distance);
+    for(const bar of candidates){
+      const el=bar.enemy.hpBarWrap;
+      if(occupied.some(other=>Math.abs(other.x-bar.x)<100 && Math.abs(other.y-bar.y)<28)){
+        el.style.display='none';continue;
+      }
+      occupied.push(bar);
+      el.style.display='block';el.style.left=bar.x+'px';el.style.top=bar.y+'px';
+      bar.enemy.hpBarFill.style.width=Math.max(0,bar.enemy.hp/bar.enemy.maxHp*100)+'%';
+    }
   }
 }

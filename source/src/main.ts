@@ -1434,6 +1434,8 @@ requestAnimationFrame(animate);
     hero.root.position.z
   );
 
+  enemies.updateFloatingBars(lockTarget);
+
   // 8. Sync HUD Bars, Focus Beans & Boss Bar
   hpFill.style.width = `${(hero.hp / hero.maxHp) * 100}%`;
   hpNum.textContent = `${Math.ceil(hero.hp)}/${hero.maxHp}`;
