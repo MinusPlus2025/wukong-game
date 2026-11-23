@@ -509,7 +509,6 @@ function performSpinAttack(): void {
   if (!hero.startSpinAttack()) return;
   audio.playLightSwing(1);
   speak('fan');
-  showToast('棍势 · 横扫千军');
 }
 
 function performParry(): void {
@@ -626,11 +625,9 @@ function toggleLockOn(): void {
   if (lockTarget && !lockTarget.dead) {
     lockTarget = null;
     lockSprite.visible = false;
-    showToast('解除锁定');
     return;
   }
   lockTarget = pickLockTarget();
-  if (lockTarget) showToast(`锁定 · ${lockTarget.spec.name}`);
 }
 
 function updateLockOn(): void {
@@ -791,15 +788,22 @@ const VOICE_TEXT: Record<string, string> = {
   'low-hp': '俺老孙，还撑得住……',
 };
 
+let voiceSubtitleUntil = 0;
+
 function speak(name: string): number {
   const duration = audio.playVoice(name);
   if (duration < 0) return 0;
   const text = VOICE_TEXT[name];
-  if (text) showStory(text, Math.max(2200, duration * 1000 + 150));
+  if (text) {
+    const subtitleDuration = Math.max(1200, duration * 1000 + 150);
+    voiceSubtitleUntil = performance.now() + subtitleDuration;
+    showStory(text, subtitleDuration, true);
+  }
   return duration;
 }
 
-function showStory(text: string, ms = 4200): void {
+function showStory(text: string, ms = 4200, dialogue = false): void {
+  if (!dialogue && performance.now() < voiceSubtitleUntil) return;
   storySub.textContent = text;
   storySub.classList.remove('hidden');
   window.clearTimeout(storyTimer);
@@ -1200,7 +1204,6 @@ requestAnimationFrame(animate);
             startPhaseCard('法天象地', '妖王 · 狂暴二阶段', e);
             audio.setBossPhase(true);
             speak('phase');
-            showToast(`${e.spec.name} · 法天象地狂暴二阶段！`);
           }
         }
       }
