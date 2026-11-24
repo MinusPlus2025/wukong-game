@@ -810,6 +810,20 @@ function showStory(text: string, ms = 4200, dialogue = false): void {
   storyTimer = window.setTimeout(() => storySub.classList.add('hidden'), ms);
 }
 
+function showControlHint(text: string, duration: number): void {
+  const generation = chapterGeneration;
+  const showWhenDialogueEnds = () => {
+    if (generation !== chapterGeneration || modalOpen) return;
+    const remaining = voiceSubtitleUntil - performance.now();
+    if (remaining > 0) {
+      window.setTimeout(showWhenDialogueEnds, Math.ceil(remaining));
+      return;
+    }
+    showStory(text, duration);
+  };
+  showWhenDialogueEnds();
+}
+
 const SPIRIT_LORE = [
   ['灵蕴 · 怒', '石缝里有一道旧刻痕，像是有人用指甲写的“别回头”。'],
   ['灵蕴 · 嗔', '焦土下埋着半只铜铃，摇不响，却还有余温。'],
@@ -1118,7 +1132,7 @@ requestAnimationFrame(animate);
   bellCooldown = Math.max(0, bellCooldown - dt);
   if (currentChapter === 2 && !bellPrompted && !modalOpen && Math.hypot(hero.root.position.x + 8, hero.root.position.z - 4) < 5.5) {
     bellPrompted = true;
-    showStory('天钟 · 按 G 镇住全场妖邪', 2800);
+    showControlHint('天钟 · 按 G 镇住全场妖邪', 2800);
   }
   if (comboTimer > 0) {
     comboTimer -= dt;
@@ -1344,7 +1358,7 @@ requestAnimationFrame(animate);
     audio.setCombat(anyAggro);
     if (!tutorialParryShown && enemies.enemies.some((e) => !e.dead && e.windUpTimer > 0)) {
       tutorialParryShown = true;
-      showStory('红光起 · 按 F 弹反；破防后再按 F 处决', 4200);
+      showControlHint('红光起 · 按 F 弹反；破防后再按 F 处决', 4200);
     }
     for (const e of enemies.enemies) {
       if (e.dead && !learnedForms.has(e.spec.id)) { learnedForms.add(e.spec.id); learnForm(e); }
