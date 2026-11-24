@@ -204,31 +204,6 @@ export class ChapterWorld {
     mesh.receiveShadow=true;this.worldGroup.add(mesh);
   }
 
-  private makeArenaTexture(): THREE.CanvasTexture {
-    const c = document.createElement('canvas');
-    c.width = c.height = 512;
-    const x = c.getContext('2d')!;
-    x.fillStyle = '#353a34'; x.fillRect(0, 0, 512, 512);
-    const n = 8, cell = 512 / n;
-    for (let ty = 0; ty < n; ty++) for (let tx = 0; tx < n; tx++) {
-      const v = 48 + Math.floor(Math.random() * 22);
-      x.fillStyle = `rgb(${v},${v + 3},${v - 2})`;
-      x.fillRect(tx * cell + 2, ty * cell + 2, cell - 4, cell - 4);
-      x.strokeStyle = 'rgba(12,16,13,.55)'; x.lineWidth = 2; x.strokeRect(tx * cell + 2, ty * cell + 2, cell - 4, cell - 4);
-    }
-    for (let i = 0; i < 70; i++) {
-      x.strokeStyle = `rgba(16,20,16,${.2 + Math.random() * .35})`; x.lineWidth = 1 + Math.random() * 2;
-      x.beginPath(); let px = Math.random() * 512, py = Math.random() * 512; x.moveTo(px, py);
-      for (let j = 0; j < 4; j++) { px += (Math.random() - .5) * 55; py += (Math.random() - .5) * 55; x.lineTo(px, py); }
-      x.stroke();
-    }
-    for (let i = 0; i < 90; i++) {
-      x.fillStyle = `rgba(44,72,40,${.12 + Math.random() * .25})`;
-      x.beginPath(); x.arc(Math.random() * 512, Math.random() * 512, 3 + Math.random() * 12, 0, Math.PI * 2); x.fill();
-    }
-    const t = new THREE.CanvasTexture(c);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 3); t.colorSpace = THREE.SRGBColorSpace; return t;
-  }
 
   private buildSculptedTerrain(config: ChapterConfig): void {
     const geo = new THREE.PlaneGeometry(96, 96, 72, 72);
@@ -325,41 +300,93 @@ export class ChapterWorld {
     // Engraved Dragon/Bagua Boss Arena Disc at z = -15
     const skyCourt = config.index === 2;
     const loader = new THREE.TextureLoader();
-    const arenaTex = skyCourt ? loader.load('textures/art/celestial-dial.jpg') : this.makeArenaTexture();
-    if(skyCourt){arenaTex.colorSpace=THREE.SRGBColorSpace;arenaTex.anisotropy=8}
-    const relief = skyCourt ? loader.load('textures/art/celestial-dial-height.png') : arenaTex;
-    const arenaDisc = new THREE.Mesh(
-      new THREE.CylinderGeometry(11.5, 12.2, 0.28, 48),
-      new THREE.MeshStandardMaterial({
-        map: arenaTex, bumpMap: relief, bumpScale: skyCourt ? .026 : .1,
-        color: config.index === 2 ? 0xf2ead6 : config.index === 1 ? 0xa8593a : 0x9aa69a,
-        roughness: 0.62, metalness: 0.12,
-      })
-    );
-    arenaDisc.position.set(0, this.getTerrainHeight(0, -15) + 0.02, -15);
-    arenaDisc.receiveShadow = true;
-    this.worldGroup.add(arenaDisc);
-
-    if (config.index !== 1) this.buildStonePaving(config.index === 2);
-
-    if(skyCourt){
-      this.dialMaterial=arenaDisc.material;
-      this.dialMaterial.emissive.setHex(0xe6ad5d);
-      this.dialMaterial.emissiveMap=relief;this.dialMaterial.emissiveIntensity=.05;
-      return;
+    const surfaceFolder = skyCourt ? 'marble' : config.index === 1 ? 'volcanic' : 'forest';
+    const loadSurface = (channel: string) => {
+      const texture = loader.load(`textures/${surfaceFolder}/${channel}.jpg`);
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      texture.anisotropy = 8;
+      return texture;
+    };
+    const stoneColor = loadSurface('diff');
+    stoneColor.colorSpace = THREE.SRGBColorSpace;
+    const stoneNormal = loadSurface('nor');
+    const stoneRoughness = loadSurface('rough');
+    const stone = new THREE.MeshStandardMaterial({
+      map: stoneColor, normalMap: stoneNormal, roughnessMap: stoneRoughness,
+      normalScale: new THREE.Vector2(.55, .55),
+      roughness: .89,
+      color: skyCourt ? 0xbeb8a9 : config.index === 1 ? 0x927061 : 0x839582,
+    });
+    const top = new THREE.RingGeometry(0, 11.5, 96, 8);
+    top.rotateX(-Math.PI / 2);
+    if (!skyCourt) {
+      const uv = top.getAttribute('uv');
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 7, uv.getY(i) * 7);
     }
-    const runeRing = new THREE.Mesh(
-      new THREE.RingGeometry(10.6, 11.1, 64),
-      new THREE.MeshBasicMaterial({
-        color: config.index === 1 ? 0xff6229 : 0xffcf66,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.55,
-      })
-    );
-    runeRing.rotation.x = -Math.PI / 2;
-    runeRing.position.set(0, arenaDisc.position.y + 0.16, -15);
-    this.worldGroup.add(runeRing);
+    const height = this.getTerrainHeight(0, -15);
+    const conformToTerrain = (geometry: THREE.BufferGeometry) => {
+      const positions = geometry.getAttribute('position');
+      for (let i = 0; i < positions.count; i++) {
+        const ground = this.getTerrainHeight(positions.getX(i), positions.getZ(i) - 15);
+        positions.setY(i, positions.getY(i) + ground - height);
+      }
+      geometry.computeVertexNormals();
+    };
+    conformToTerrain(top);
+    const platform = new THREE.Group();
+    platform.position.set(0, height, -15);
+    const edgeProfile = [
+      [12.15, -.27], [12.15, -.13], [12.02, -.095], [11.79, -.095],
+      [11.79, -.046], [11.62, -.021], [11.58, .06], [11.5, .10],
+    ];
+    const edge = new THREE.LatheGeometry(edgeProfile.map(([r, y]) => new THREE.Vector2(r, y)), 96);
+    const edgeUV = edge.getAttribute('uv');
+    const edgePosition = edge.getAttribute('position');
+    for (let i = 0; i < edgeUV.count; i++) {
+      edgeUV.setXY(i, edgeUV.getX(i) * 24, edgePosition.getY(i) * 1.8);
+    }
+    conformToTerrain(edge);
+    const curb = new THREE.Mesh(edge, stone);
+    curb.receiveShadow = true;
+    platform.add(curb);
+
+    let floorMaterial = stone;
+    if (skyCourt) {
+      const dial = loader.load('textures/art/celestial-dial.jpg');
+      dial.colorSpace = THREE.SRGBColorSpace;
+      dial.anisotropy = 8;
+      const engraving = loader.load('textures/art/celestial-dial-height.png');
+      floorMaterial = new THREE.MeshStandardMaterial({
+        map: dial, bumpMap: engraving, bumpScale: .026, roughness: .62, metalness: .12,
+        color: 0xf2ead6, emissive: 0xe6ad5d, emissiveMap: engraving, emissiveIntensity: .05,
+      });
+      this.dialMaterial = floorMaterial;
+    }
+    const floor = new THREE.Mesh(top, floorMaterial);
+    floor.position.y = .10;
+    floor.receiveShadow = true;
+    platform.add(floor);
+    this.worldGroup.add(platform);
+
+    if (config.index !== 1) this.buildStonePaving(skyCourt);
+    if (skyCourt) return;
+
+    // Broken radial inlays mark the arena boundary without resembling a HUD ring.
+    const inlayGeometry = new THREE.RingGeometry(10.83, 10.96, 6, 1, 0, Math.PI / 30);
+    inlayGeometry.rotateX(-Math.PI / 2);
+    const inlay = new THREE.InstancedMesh(inlayGeometry, new THREE.MeshStandardMaterial({
+      color: config.index === 1 ? 0x9d4d33 : 0xa18e60, roughness: .58, metalness: .38,
+    }), 36);
+    const stamp = new THREE.Object3D();
+    for (let i = 0; i < inlay.count; i++) {
+      stamp.rotation.y = i * Math.PI * 2 / inlay.count;
+      const center = stamp.rotation.y - Math.PI / 60;
+      stamp.position.y = .113 + this.getTerrainHeight(10.9 * Math.cos(center), -15 - 10.9 * Math.sin(center)) - height;
+      stamp.updateMatrix();
+      inlay.setMatrixAt(i, stamp.matrix);
+    }
+    inlay.receiveShadow = true;
+    platform.add(inlay);
 
     if (config.index === 0) {
       // Taper and bend the leaves in three dimensions; the stone walk stays clear.
